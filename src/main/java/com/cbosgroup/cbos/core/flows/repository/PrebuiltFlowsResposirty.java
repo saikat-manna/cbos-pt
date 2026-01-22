@@ -2,12 +2,14 @@ package com.cbosgroup.cbos.core.flows.repository;
 
 import com.cbosgroup.cbos.core.flows.FlowMetadata;
 import com.cbosgroup.cbos.core.flows.FlowStateMetadata;
+import com.cbosgroup.cbos.core.flows.ForkJoinState;
 import com.cbosgroup.cbos.core.flows.InputField;
 import com.cbosgroup.cbos.core.flows.UserTaskState;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Repository containing predefined/canned flows.
@@ -26,11 +28,17 @@ public class PrebuiltFlowsResposirty {
      */
     public final FlowMetadata USER_DOCUMENT_UPLOAD;
 
+    /**
+     * Flow with fork-join parallel execution
+     */
+    public final FlowMetadata PARALLEL_DOCUMENT_COLLECTION;
+
     public PrebuiltFlowsResposirty() {
         this.SIMPLE_DOCUMENT_COLLECTION = buildSimpleDocumentCollectionFlow();
         this.KYC_VERIFICATION = buildKycVerificationFlow();
         this.DOCUMENT_APPROVAL = buildDocumentApprovalFlow();
         this.USER_DOCUMENT_UPLOAD = buildUserDocumentUploadFlow();
+        this.PARALLEL_DOCUMENT_COLLECTION = buildParallelDocumentCollectionFlow();
     }
 
     private FlowMetadata buildSimpleDocumentCollectionFlow() {
@@ -245,6 +253,114 @@ public class PrebuiltFlowsResposirty {
                 .flowId("user-document-upload")
                 .flowName("User Document Upload")
                 .description("Collects documents from user with async user tasks")
+                .states(states)
+                .startStateId("init")
+                .build();
+    }
+
+    private FlowMetadata buildParallelDocumentCollectionFlow() {
+        Map<String, FlowStateMetadata> states = new HashMap<>();
+
+        // Start state
+        states.put("init", FlowStateMetadata.builder()
+                .stateId("init")
+                .stateName("Initialize")
+                .description("Initialize parallel document collection")
+                .pausable(false)
+                .terminal(false)
+                .action(ctx -> {
+                    ctx.put("startTime", System.currentTimeMillis());
+                    System.out.println("  [init] Starting parallel document collection...");
+                    return "parallel_collect";
+                })
+                .build());
+
+        // Child state 1: Sync task - ID verification
+        FlowStateMetadata verifyIdTask = FlowStateMetadata.builder()
+                .stateId("verify_id")
+                .stateName("Verify ID")
+                .description("Verify government ID")
+                .pausable(false)
+                .terminal(false)
+                .action(ctx -> {
+                    System.out.println("  [verify_id] Verifying ID document...");
+                    try { Thread.sleep(500); } catch (InterruptedException e) {}
+                    ctx.put("idVerified", true);
+                    return "verified";
+                })
+                .build();
+
+        // Child state 2: Sync task - Address verification
+        FlowStateMetadata verifyAddressTask = FlowStateMetadata.builder()
+                .stateId("verify_address")
+                .stateName("Verify Address")
+                .description("Verify address proof")
+                .pausable(false)
+                .terminal(false)
+                .action(ctx -> {
+                    System.out.println("  [verify_address] Verifying address proof...");
+                    try { Thread.sleep(300); } catch (InterruptedException e) {}
+                    ctx.put("addressVerified", true);
+                    return "verified";
+                })
+                .build();
+
+        // Child state 3: User task - additional document upload
+        FlowStateMetadata additionalDocTask = UserTaskState.builder()
+                .stateId("upload_additional")
+                .stateName("Upload Additional Document")
+                .description("Please upload any additional supporting document")
+                .pausable(false)
+                .terminal(false)
+                .eligibleRoles(Set.of("user", "applicant"))
+                .expectedInputs(List.of(
+                        InputField.builder()
+                                .fieldName("additionalDoc")
+                                .label("Additional Document")
+                                .fieldType(InputField.FieldType.DOCUMENT)
+                                .required(false)
+                                .description("Optional supporting document")
+                                .build()
+                ))
+                .onResponse((ctx, response) -> {
+                    ctx.put("additionalDoc", response.get("additionalDoc"));
+                    return "uploaded";
+                })
+                .build();
+
+        // Fork-join state
+        ForkJoinState forkJoin = new ForkJoinState(
+                "parallel_collect",
+                "Parallel Document Collection",
+                new FlowStateMetadata[]{verifyIdTask, verifyAddressTask, additionalDocTask},
+                (ctx, results) -> {
+                    System.out.println("  [merge] All parallel tasks completed!");
+                    System.out.println("  [merge] Results: " + results);
+                    ctx.put("parallelComplete", true);
+                    return "finalize";
+                }
+        );
+        states.put("parallel_collect", forkJoin);
+
+        // Final state
+        states.put("finalize", FlowStateMetadata.builder()
+                .stateId("finalize")
+                .stateName("Finalize")
+                .description("Finalize document collection")
+                .pausable(false)
+                .terminal(true)
+                .action(ctx -> {
+                    long elapsed = System.currentTimeMillis() - (Long) ctx.get("startTime");
+                    ctx.put("totalTime", elapsed);
+                    System.out.println("  [finalize] Document collection complete in " + elapsed + "ms");
+                    return null;
+                })
+                .build());
+
+        return FlowMetadata.builder()
+                .flowId("parallel-document-collection")
+                .flowName("Parallel Document Collection")
+                .description("Collects and verifies documents in parallel using fork-join")
                 .states(states)
                 .startStateId("init")
                 .build();

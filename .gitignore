@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Maven Shade Plugin ###
+dependency-reduced-pom.xml
