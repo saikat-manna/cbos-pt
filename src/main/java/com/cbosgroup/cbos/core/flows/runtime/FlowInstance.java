@@ -29,7 +29,6 @@ public class FlowInstance {
 
     private Version version;
 
-    private FlowStateInstance currentState;
 
     private FlowExecutionHistory history;
 
@@ -59,9 +58,9 @@ public class FlowInstance {
         if (startMeta == null) {
             throw new IllegalStateException("Flow has no start state defined");
         }
-        this.currentState = new FlowStateInstance(startMeta);
+        FlowStateInstance currentInstance  = new FlowStateInstance(startMeta);
         this.executionData.setCurrentStateId(startMeta.getStateId());
-        this.executionData.setCurrentState(currentState);
+        this.executionData.setCurrentState(currentInstance);
         this.executionData.setFlowStatus(FlowStatus.RUNNING);
         history.addEntry(startMeta.getStateId(), "INITIALIZED", "Flow started");
     }
@@ -74,9 +73,9 @@ public class FlowInstance {
         if (nextMeta == null) {
             throw new IllegalStateException("Unknown state: " + nextStateId);
         }
-        this.currentState = new FlowStateInstance(nextMeta);
+        FlowStateInstance currentInstance  = new FlowStateInstance(nextMeta);
         this.executionData.setCurrentStateId(nextStateId);
-        this.executionData.setCurrentState(currentState);
+        this.executionData.setCurrentState(currentInstance);
         history.addEntry(nextStateId, "TRANSITIONED", "Moved to state: " + nextMeta.getStateName());
     }
 
@@ -145,4 +144,8 @@ public class FlowInstance {
                 .filter(a -> a.getRole() != null && eligibleRoles.contains(a.getRole()))
                 .collect(Collectors.toList());
     }
+
+	public FlowStateInstance getCurrentState() {
+		return executionData.getCurrentState();
+	}
 }

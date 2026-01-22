@@ -5,12 +5,17 @@ import com.cbosgroup.cbos.core.actors.Actor;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData.FlowStatus;
 import com.cbosgroup.cbos.core.flows.runtime.FlowInstance;
 import com.cbosgroup.cbos.core.flows.runtime.FlowStateInstance;
+import com.cbosgroup.cbos.core.flows.runtime.ForkJoinStateInstance;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * The core engine running a flow.
@@ -23,6 +28,11 @@ public class FlowExecuter {
      * Active flow instances, keyed by instance ID
      */
     private final Map<String, FlowInstance> activeFlows = new ConcurrentHashMap<>();
+
+    /**
+     * Global thread pool for parallel execution
+     */
+    private final ExecutorService threadPool = Executors.newCachedThreadPool();
 
     /**
      * Optional notifier for actor notifications on user tasks
@@ -141,15 +151,13 @@ public class FlowExecuter {
             if (metadata instanceof UserTaskState userTask) {
                 instance.awaitUserInput();
                 log.info("Flow awaiting user input at state: {}", metadata.getStateId());
+                notifyActorsForUserTask(instance, userTask);
+                return;
+            }
 
-                // Notify eligible actors
-                if (actorNotifier != null && userTask.getEligibleRoles() != null) {
-                    List<Actor> eligibleActors = instance.getActorsByRoles(userTask.getEligibleRoles());
-                    if (!eligibleActors.isEmpty()) {
-                        actorNotifier.notifyActors(eligibleActors, userTask, instance);
-                        log.info("Notified {} actors for task: {}", eligibleActors.size(), metadata.getStateId());
-                    }
-                }
+            // Check if this is a ForkJoinState
+            if (metadata instanceof ForkJoinState forkJoinMeta) {
+                executeForkJoin(instance, forkJoinMeta);
                 return;
             }
 
@@ -172,6 +180,150 @@ public class FlowExecuter {
 
             // Transition to next state
             instance.transitionTo(nextStateId);
+        }
+    }
+
+    /**
+     * Execute a fork-join state - runs children in parallel.
+     */
+    private void executeForkJoin(FlowInstance instance, ForkJoinState forkJoinMeta) {
+        String forkStateId = forkJoinMeta.getStateId();
+        log.info("Executing fork-join state: {}", forkStateId);
+
+        ForkJoinStateInstance forkInstance = new ForkJoinStateInstance(forkJoinMeta);
+        instance.getExecutionData().setCurrentState(forkInstance);
+
+        List<CompletableFuture<Void>> syncFutures = new ArrayList<>();
+
+        for (FlowStateMetadata childMeta : forkJoinMeta.getChildStates()) {
+            String childStateId = childMeta.getStateId();
+
+            if (childMeta instanceof UserTaskState userTask) {
+                // UserTask: store in pending, notify actors
+                FlowStateInstance childInstance = new FlowStateInstance(childMeta);
+                forkInstance.addChildExecutionState(childStateId, childInstance);
+                log.info("Fork-join child {} awaiting user input", childStateId);
+                notifyActorsForUserTask(instance, userTask);
+            } else if (childMeta.isPausable()) {
+                // Pausable: execute and store instance
+                FlowStateInstance childInstance = new FlowStateInstance(childMeta);
+                childInstance.execute(instance.getContext());
+                forkInstance.addChildExecutionState(childStateId, childInstance);
+                log.info("Fork-join child {} paused", childStateId);
+            } else {
+                // Sync: execute in parallel via thread pool
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    FlowStateInstance childInstance = new FlowStateInstance(childMeta);
+                    String result = childInstance.execute(instance.getContext());
+                    forkInstance.addChildResult(childStateId, result);
+                    log.info("Fork-join child {} completed with result: {}", childStateId, result);
+                }, threadPool);
+                syncFutures.add(future);
+            }
+        }
+
+        // Wait for all sync futures to complete
+        if (!syncFutures.isEmpty()) {
+            CompletableFuture.allOf(syncFutures.toArray(new CompletableFuture[0])).join();
+        }
+
+        // Check if all children completed (only sync states, no pending)
+        if (forkInstance.isAllChildrenCompleted()) {
+            completeForkJoin(instance, forkInstance);
+        } else {
+            // Has pending children - pause the flow
+            instance.pause();
+            log.info("Fork-join {} waiting for {} pending children", forkStateId, forkInstance.getChildExecutionStates().size());
+        }
+    }
+
+    /**
+     * Complete a fork-join state - call merge function and continue.
+     */
+    private void completeForkJoin(FlowInstance instance, ForkJoinStateInstance forkInstance) {
+        ForkJoinState forkJoinMeta = forkInstance.getForkJoinMetadata();
+        String forkStateId = forkJoinMeta.getStateId();
+
+        log.info("Fork-join {} all children completed, calling merge function", forkStateId);
+
+        // Call merge function
+        String nextStateId = null;
+        if (forkJoinMeta.getMergeFunction() != null) {
+            nextStateId = forkJoinMeta.getMergeFunction().apply(instance.getContext(), forkInstance.getChildResults());
+        }
+
+        // Continue flow
+        if (nextStateId != null && !forkJoinMeta.isTerminal()) {
+            instance.getExecutionData().setFlowStatus(FlowStatus.RUNNING);
+            instance.transitionTo(nextStateId);
+            executeFlowLoop(instance);
+        } else {
+            instance.complete();
+            log.info("Flow completed after fork-join: {}", forkStateId);
+        }
+    }
+
+    /**
+     * Resume a paused child within a fork-join state.
+     */
+    public void resumeForkChild(String instanceId, String childStateId) {
+        FlowInstance instance = activeFlows.get(instanceId);
+        if (instance == null) {
+            throw new IllegalStateException("Flow instance not found: " + instanceId);
+        }
+
+        FlowStateInstance currentState = instance.getCurrentState();
+        if (!(currentState instanceof ForkJoinStateInstance forkInstance)) {
+            throw new IllegalStateException("Current state is not a fork-join");
+        }
+
+        FlowStateInstance childInstance = forkInstance.getChildExecutionState(childStateId);
+        if (childInstance == null) {
+            throw new IllegalStateException("Child state not found: " + childStateId);
+        }
+
+        log.info("Resuming fork-join child: {}", childStateId);
+
+        // Resume and store result
+        String result = childInstance.resume(instance.getContext());
+        forkInstance.addChildResult(childStateId, result);
+
+        // Check if all completed
+        if (forkInstance.isAllChildrenCompleted()) {
+            completeForkJoin(instance, forkInstance);
+        }
+    }
+
+    /**
+     * Submit user response for a user task within a fork-join state.
+     */
+    public void submitForkUserResponse(String instanceId, String childStateId, Map<String, Object> response) {
+        FlowInstance instance = activeFlows.get(instanceId);
+        if (instance == null) {
+            throw new IllegalStateException("Flow instance not found: " + instanceId);
+        }
+
+        FlowStateInstance currentState = instance.getCurrentState();
+        if (!(currentState instanceof ForkJoinStateInstance forkInstance)) {
+            throw new IllegalStateException("Current state is not a fork-join");
+        }
+
+        FlowStateInstance childInstance = forkInstance.getChildExecutionState(childStateId);
+        if (childInstance == null) {
+            throw new IllegalStateException("Child state not found: " + childStateId);
+        }
+
+        FlowStateMetadata childMeta = childInstance.getMetadata();
+        if (!(childMeta instanceof UserTaskState userTask)) {
+            throw new IllegalStateException("Child state is not a user task: " + childStateId);
+        }
+
+        String result = processUserTaskResponse(instance, userTask, response);
+        forkInstance.addChildResult(childStateId, result);
+
+        // Check if all completed
+        if (forkInstance.isAllChildrenCompleted()) {
+            completeForkJoin(instance, forkInstance);
         }
     }
 
@@ -199,22 +351,7 @@ public class FlowExecuter {
             throw new IllegalStateException("Current state is not a user task");
         }
 
-        // Validate response
-        UserTaskState.ValidationResult validation = userTask.validateResponse(response);
-        if (!validation.isValid()) {
-            throw new IllegalArgumentException("Invalid response: " + validation.getErrorMessage());
-        }
-
-        log.info("User response received for flow: {}, state: {}", instanceId, metadata.getStateId());
-
-        // Store response in context
-        instance.getContext().put("_userResponse_" + metadata.getStateId(), response);
-
-        // Execute the onResponse handler
-        String nextStateId = null;
-        if (userTask.getOnResponse() != null) {
-            nextStateId = userTask.getOnResponse().apply(instance.getContext(), response);
-        }
+        String nextStateId = processUserTaskResponse(instance, userTask, response);
 
         // Resume flow execution
         instance.getExecutionData().setFlowStatus(FlowStatus.RUNNING);
@@ -225,6 +362,42 @@ public class FlowExecuter {
         } else {
             instance.complete();
             log.info("Flow completed after user response at state: {}", metadata.getStateId());
+        }
+    }
+
+    /**
+     * Process user task response - validate, store, and execute handler.
+     * Common method used by both regular user tasks and fork-join user tasks.
+     */
+    private String processUserTaskResponse(FlowInstance instance, UserTaskState userTask, Map<String, Object> response) {
+        // Validate response
+        UserTaskState.ValidationResult validation = userTask.validateResponse(response);
+        if (!validation.isValid()) {
+            throw new IllegalArgumentException("Invalid response: " + validation.getErrorMessage());
+        }
+
+        log.info("User response received for state: {}", userTask.getStateId());
+
+        // Store response in context
+        instance.getContext().put("_userResponse_" + userTask.getStateId(), response);
+
+        // Execute the onResponse handler
+        if (userTask.getOnResponse() != null) {
+            return userTask.getOnResponse().apply(instance.getContext(), response);
+        }
+        return null;
+    }
+
+    /**
+     * Notify actors for a user task.
+     */
+    private void notifyActorsForUserTask(FlowInstance instance, UserTaskState userTask) {
+        if (actorNotifier != null && userTask.getEligibleRoles() != null) {
+            List<Actor> eligibleActors = instance.getActorsByRoles(userTask.getEligibleRoles());
+            if (!eligibleActors.isEmpty()) {
+                actorNotifier.notifyActors(eligibleActors, userTask, instance);
+                log.info("Notified {} actors for task: {}", eligibleActors.size(), userTask.getStateId());
+            }
         }
     }
 
