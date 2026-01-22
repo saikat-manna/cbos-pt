@@ -1,15 +1,21 @@
 package com.cbosgroup.cbos.core.flows.runtime;
 
 import com.cbosgroup.cbos.core.Version;
+import com.cbosgroup.cbos.core.actors.Actor;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData.FlowStatus;
 import com.cbosgroup.cbos.core.flows.FlowMetadata;
 import com.cbosgroup.cbos.core.flows.FlowStateMetadata;
 import lombok.Data;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Runtime instance of a flow execution
@@ -28,6 +34,11 @@ public class FlowInstance {
     private FlowExecutionHistory history;
 
     private FlowExecutionStateData executionData;
+
+    /**
+     * Actors participating in this flow instance
+     */
+    private List<Actor> actors = new ArrayList<>();
 
     public FlowInstance(FlowMetadata flowMeta, Version version) {
         this.instanceId = UUID.randomUUID().toString();
@@ -100,9 +111,38 @@ public class FlowInstance {
     }
 
     /**
+     * Set flow to await user input (for UserTaskState)
+     */
+    public void awaitUserInput() {
+        this.executionData.setFlowStatus(FlowStatus.AWAITING_USER_INPUT);
+        history.addEntry(executionData.getCurrentStateId(), "AWAITING_USER_INPUT", "Waiting for user response");
+    }
+
+    /**
+     * Check if flow is awaiting user input
+     */
+    public boolean isAwaitingUserInput() {
+        return executionData.getFlowStatus() == FlowStatus.AWAITING_USER_INPUT;
+    }
+
+    /**
      * Get the context map
      */
     public Map<String, Object> getContext() {
         return executionData.getContext();
+    }
+
+    /**
+     * Get actors filtered by eligible roles
+     * @param eligibleRoles set of roles that are eligible
+     * @return actors whose role matches any of the eligible roles
+     */
+    public List<Actor> getActorsByRoles(Set<String> eligibleRoles) {
+        if (actors == null || eligibleRoles == null || eligibleRoles.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return actors.stream()
+                .filter(a -> a.getRole() != null && eligibleRoles.contains(a.getRole()))
+                .collect(Collectors.toList());
     }
 }

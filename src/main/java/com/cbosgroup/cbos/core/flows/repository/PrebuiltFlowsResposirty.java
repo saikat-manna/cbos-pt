@@ -2,8 +2,11 @@ package com.cbosgroup.cbos.core.flows.repository;
 
 import com.cbosgroup.cbos.core.flows.FlowMetadata;
 import com.cbosgroup.cbos.core.flows.FlowStateMetadata;
+import com.cbosgroup.cbos.core.flows.InputField;
+import com.cbosgroup.cbos.core.flows.UserTaskState;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,10 +21,16 @@ public class PrebuiltFlowsResposirty {
 
     public final FlowMetadata DOCUMENT_APPROVAL;
 
+    /**
+     * Flow with async user tasks - waits for user input
+     */
+    public final FlowMetadata USER_DOCUMENT_UPLOAD;
+
     public PrebuiltFlowsResposirty() {
         this.SIMPLE_DOCUMENT_COLLECTION = buildSimpleDocumentCollectionFlow();
         this.KYC_VERIFICATION = buildKycVerificationFlow();
         this.DOCUMENT_APPROVAL = buildDocumentApprovalFlow();
+        this.USER_DOCUMENT_UPLOAD = buildUserDocumentUploadFlow();
     }
 
     private FlowMetadata buildSimpleDocumentCollectionFlow() {
@@ -138,6 +147,106 @@ public class PrebuiltFlowsResposirty {
                 .description("Document approval workflow")
                 .states(states)
                 .startStateId("submit")
+                .build();
+    }
+
+    private FlowMetadata buildUserDocumentUploadFlow() {
+        Map<String, FlowStateMetadata> states = new HashMap<>();
+
+        // Start state - auto
+        states.put("init", FlowStateMetadata.builder()
+                .stateId("init")
+                .stateName("Initialize")
+                .description("Initialize document upload flow")
+                .pausable(false)
+                .terminal(false)
+                .action(ctx -> {
+                    ctx.put("flowStarted", true);
+                    return "upload_id";
+                })
+                .build());
+
+        // User task - upload ID document
+        states.put("upload_id", UserTaskState.builder()
+                .stateId("upload_id")
+                .stateName("Upload ID Document")
+                .description("Please upload your government-issued ID")
+                .pausable(false)
+                .terminal(false)
+                .expectedInputs(List.of(
+                        InputField.builder()
+                                .fieldName("idDocument")
+                                .label("ID Document")
+                                .fieldType(InputField.FieldType.DOCUMENT)
+                                .required(true)
+                                .description("Government-issued photo ID")
+                                .build(),
+                        InputField.builder()
+                                .fieldName("idType")
+                                .label("ID Type")
+                                .fieldType(InputField.FieldType.STRING)
+                                .required(true)
+                                .description("Type of ID (passport, drivers license, etc)")
+                                .build()
+                ))
+                .onResponse((ctx, response) -> {
+                    ctx.put("idDocument", response.get("idDocument"));
+                    ctx.put("idType", response.get("idType"));
+                    return "upload_address_proof";
+                })
+                .build());
+
+        // User task - upload address proof
+        states.put("upload_address_proof", UserTaskState.builder()
+                .stateId("upload_address_proof")
+                .stateName("Upload Address Proof")
+                .description("Please upload proof of address")
+                .pausable(false)
+                .terminal(false)
+                .expectedInputs(List.of(
+                        InputField.builder()
+                                .fieldName("addressDocument")
+                                .label("Address Proof")
+                                .fieldType(InputField.FieldType.DOCUMENT)
+                                .required(true)
+                                .description("Utility bill or bank statement")
+                                .build()
+                ))
+                .onResponse((ctx, response) -> {
+                    ctx.put("addressDocument", response.get("addressDocument"));
+                    return "validate";
+                })
+                .build());
+
+        // Auto state - validate
+        states.put("validate", FlowStateMetadata.builder()
+                .stateId("validate")
+                .stateName("Validate Documents")
+                .description("System validates uploaded documents")
+                .pausable(false)
+                .terminal(false)
+                .action(ctx -> {
+                    ctx.put("validated", true);
+                    return "complete";
+                })
+                .build());
+
+        // Terminal state
+        states.put("complete", FlowStateMetadata.builder()
+                .stateId("complete")
+                .stateName("Complete")
+                .description("Document upload completed")
+                .pausable(false)
+                .terminal(true)
+                .action(ctx -> null)
+                .build());
+
+        return FlowMetadata.builder()
+                .flowId("user-document-upload")
+                .flowName("User Document Upload")
+                .description("Collects documents from user with async user tasks")
+                .states(states)
+                .startStateId("init")
                 .build();
     }
 }

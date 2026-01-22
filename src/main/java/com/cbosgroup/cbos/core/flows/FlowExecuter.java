@@ -1,11 +1,14 @@
 package com.cbosgroup.cbos.core.flows;
 
 import com.cbosgroup.cbos.core.Version;
+import com.cbosgroup.cbos.core.actors.Actor;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData.FlowStatus;
 import com.cbosgroup.cbos.core.flows.runtime.FlowInstance;
 import com.cbosgroup.cbos.core.flows.runtime.FlowStateInstance;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,6 +23,12 @@ public class FlowExecuter {
      * Active flow instances, keyed by instance ID
      */
     private final Map<String, FlowInstance> activeFlows = new ConcurrentHashMap<>();
+
+    /**
+     * Optional notifier for actor notifications on user tasks
+     */
+    @Setter
+    private ActorNotifier actorNotifier;
 
     /**
      * Receives a flow design to execute.
@@ -128,6 +137,22 @@ public class FlowExecuter {
 
             log.debug("Executing state: {} ({})", metadata.getStateId(), metadata.getStateName());
 
+            // Check if this is a UserTaskState - auto-pause and wait for user input
+            if (metadata instanceof UserTaskState userTask) {
+                instance.awaitUserInput();
+                log.info("Flow awaiting user input at state: {}", metadata.getStateId());
+
+                // Notify eligible actors
+                if (actorNotifier != null && userTask.getEligibleRoles() != null) {
+                    List<Actor> eligibleActors = instance.getActorsByRoles(userTask.getEligibleRoles());
+                    if (!eligibleActors.isEmpty()) {
+                        actorNotifier.notifyActors(eligibleActors, userTask, instance);
+                        log.info("Notified {} actors for task: {}", eligibleActors.size(), metadata.getStateId());
+                    }
+                }
+                return;
+            }
+
             // Execute the current state
             String nextStateId = currentState.execute(instance.getContext());
 
@@ -148,6 +173,75 @@ public class FlowExecuter {
             // Transition to next state
             instance.transitionTo(nextStateId);
         }
+    }
+
+    /**
+     * Submit user response for a flow waiting for input.
+     *
+     * @param instanceId the flow instance ID
+     * @param response the user response data
+     * @throws IllegalStateException if flow not found or not awaiting input
+     * @throws IllegalArgumentException if response validation fails
+     */
+    public void submitUserResponse(String instanceId, Map<String, Object> response) {
+        FlowInstance instance = activeFlows.get(instanceId);
+        if (instance == null) {
+            throw new IllegalStateException("Flow instance not found: " + instanceId);
+        }
+
+        if (!instance.isAwaitingUserInput()) {
+            throw new IllegalStateException("Flow is not awaiting user input. Current status: " +
+                    instance.getExecutionData().getFlowStatus());
+        }
+
+        FlowStateMetadata metadata = instance.getCurrentState().getMetadata();
+        if (!(metadata instanceof UserTaskState userTask)) {
+            throw new IllegalStateException("Current state is not a user task");
+        }
+
+        // Validate response
+        UserTaskState.ValidationResult validation = userTask.validateResponse(response);
+        if (!validation.isValid()) {
+            throw new IllegalArgumentException("Invalid response: " + validation.getErrorMessage());
+        }
+
+        log.info("User response received for flow: {}, state: {}", instanceId, metadata.getStateId());
+
+        // Store response in context
+        instance.getContext().put("_userResponse_" + metadata.getStateId(), response);
+
+        // Execute the onResponse handler
+        String nextStateId = null;
+        if (userTask.getOnResponse() != null) {
+            nextStateId = userTask.getOnResponse().apply(instance.getContext(), response);
+        }
+
+        // Resume flow execution
+        instance.getExecutionData().setFlowStatus(FlowStatus.RUNNING);
+
+        if (nextStateId != null && !metadata.isTerminal()) {
+            instance.transitionTo(nextStateId);
+            executeFlowLoop(instance);
+        } else {
+            instance.complete();
+            log.info("Flow completed after user response at state: {}", metadata.getStateId());
+        }
+    }
+
+    /**
+     * Get the pending user task for a flow awaiting input.
+     *
+     * @param instanceId the flow instance ID
+     * @return the UserTaskState, or null if not awaiting input
+     */
+    public UserTaskState getPendingUserTask(String instanceId) {
+        FlowInstance instance = activeFlows.get(instanceId);
+        if (instance == null || !instance.isAwaitingUserInput()) {
+            return null;
+        }
+
+        FlowStateMetadata metadata = instance.getCurrentState().getMetadata();
+        return metadata instanceof UserTaskState ? (UserTaskState) metadata : null;
     }
 
     /**

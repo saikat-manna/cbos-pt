@@ -42,6 +42,7 @@ public class FlowExecutionStateData {
         NOT_STARTED,
         RUNNING,
         PAUSED,
+        AWAITING_USER_INPUT,
         COMPLETED,
         FAILED
     }
