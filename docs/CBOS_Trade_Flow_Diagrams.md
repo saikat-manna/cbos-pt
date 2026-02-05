@@ -137,8 +137,8 @@ sequenceDiagram
     participant D as Forwarder (D)
     participant S as System (CBOS)
 
-    rect rgb(227, 242, 253)
-        Note over A,S: Phase 1: NEGOTIATION
+    rect rgba(21, 101, 192, 0.15)
+        Note over A,S: PHASE 1 — NEGOTIATION
         A->>S: Create PI (Draft)
         A->>S: Approve PI
         A->>B: Share PI
@@ -147,8 +147,8 @@ sequenceDiagram
         A->>S: Accept PO terms
     end
 
-    rect rgb(232, 245, 233)
-        Note over A,S: Phase 2: CONTRACTING (Optional)
+    rect rgba(46, 125, 50, 0.15)
+        Note over A,S: PHASE 2 — CONTRACTING (Optional)
         B->>C: Request LC
         C->>S: Issue LC
         C->>A: Advise LC
@@ -156,8 +156,8 @@ sequenceDiagram
         S->>S: Capture LC rules
     end
 
-    rect rgb(255, 243, 224)
-        Note over A,S: Phase 3: PRE-SHIPMENT
+    rect rgba(230, 81, 0, 0.15)
+        Note over A,S: PHASE 3 — PRE-SHIPMENT
         A->>S: Create CI (from PI)
         A->>S: Approve CI
         A->>B: Share CI
@@ -169,8 +169,8 @@ sequenceDiagram
         D->>S: Accept SI
     end
 
-    rect rgb(243, 229, 245)
-        Note over A,S: Phase 4: SHIPMENT & LOGISTICS
+    rect rgba(106, 27, 154, 0.15)
+        Note over A,S: PHASE 4 — SHIPMENT & LOGISTICS
         D->>D: Issue BL/AWB (external)
         A->>S: Upload BL/AWB to CBOS
         S->>S: Validate BL vs SI/CI/PL
@@ -181,19 +181,19 @@ sequenceDiagram
         D->>S: Prepare Export Declaration
         A->>S: Approve Export Declaration
         D->>S: Submit to Customs
-        S->>S: Customs clears → LEO issued
+        S->>S: Customs clears, LEO issued
     end
 
-    rect rgb(224, 247, 250)
-        Note over A,S: Phase 5: IMPORT & CLEARANCE
+    rect rgba(0, 105, 92, 0.15)
+        Note over A,S: PHASE 5 — IMPORT & CLEARANCE
         B->>S: Prepare Import Declaration
         D->>S: Submit to Destination Customs
         S->>S: Customs clears
         B->>S: Confirm delivery
     end
 
-    rect rgb(252, 228, 236)
-        Note over A,S: Phase 6: SETTLEMENT & CLOSURE
+    rect rgba(173, 20, 87, 0.15)
+        Note over A,S: PHASE 6 — SETTLEMENT & CLOSURE
         S->>C: Payment Ready Signal
         C->>C: Execute payment (external)
         C->>S: Issue Payment Advice
@@ -201,7 +201,7 @@ sequenceDiagram
         S->>S: Reconcile to CI/Trade
         C->>C: Issue FIRC (external)
         A->>S: Upload FIRC
-        S->>S: Map FIRC → close shipping bill (EDPMS)
+        S->>S: Map FIRC, close shipping bill (EDPMS)
         S->>S: TRADE CLOSED
     end
 ```
