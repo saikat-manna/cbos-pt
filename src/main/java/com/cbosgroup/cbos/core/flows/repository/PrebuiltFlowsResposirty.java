@@ -16,6 +16,8 @@ import java.util.Set;
  * Flows are constants created during repository instantiation.
  */
 public class PrebuiltFlowsResposirty {
+	
+	private final Map<String, FlowMetadata> allFlows = new HashMap<String, FlowMetadata>();
 
     public final FlowMetadata SIMPLE_DOCUMENT_COLLECTION;
 
@@ -32,6 +34,10 @@ public class PrebuiltFlowsResposirty {
      * Flow with fork-join parallel execution
      */
     public final FlowMetadata PARALLEL_DOCUMENT_COLLECTION;
+    
+    public final FlowMetadata getFlowByName(String name) {
+    	return allFlows.get(name);
+    }
 
     public PrebuiltFlowsResposirty() {
         this.SIMPLE_DOCUMENT_COLLECTION = buildSimpleDocumentCollectionFlow();

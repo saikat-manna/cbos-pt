@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 @Data
 public class FlowInstance {
 
-    private String instanceId;
+    protected String instanceId;
 
     private FlowMetadata flowMeta;
 
