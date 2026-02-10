@@ -16,46 +16,44 @@ import java.util.UUID;
 @AllArgsConstructor
 public class User {
 
-    private UUID userId;
+	private UUID userId;
 
-    private String username;
+	private String username;
 
-    private String email;
+	private String email;
 
-    private String passwordHash;
+	private String passwordHash;
 
-    private String firstName;
+	private String firstName;
 
-    private String lastName;
+	private String lastName;
 
-    private String displayName;
+	private String displayName;
 
-    private String phone;
+	private String phone;
 
-    private String avatarUrl;
+	private String avatarUrl;
 
-    @Builder.Default
-    private Boolean isActive = true;
+	@Builder.Default
+	private Boolean isActive = true;
 
-    @Builder.Default
-    private Boolean isVerified = false;
+	@Builder.Default
+	private Boolean isVerified = false;
 
-    @Builder.Default
-    private Boolean isLocked = false;
+	@Builder.Default
+	private Boolean isLocked = false;
 
-    @Builder.Default
-    private Integer failedLoginCount = 0;
+	@Builder.Default
+	private Integer failedLoginCount = 0;
 
-    private Instant createdAt;
+	private Instant createdAt;
 
-    private Instant updatedAt;
+	private Instant updatedAt;
 
-    private Instant lastLoginAt;
+	private Instant lastLoginAt;
 
-    private Instant lockedUntil;
+	private Instant lockedUntil;
 
-    private Instant deletedAt;
+	private Instant deletedAt;
 
-    @Builder.Default
-    private Set<Role> roles = new HashSet<>();
 }

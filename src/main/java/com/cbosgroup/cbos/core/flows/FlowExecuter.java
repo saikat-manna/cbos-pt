@@ -1,5 +1,14 @@
 package com.cbosgroup.cbos.core.flows;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 import com.cbosgroup.cbos.core.Version;
 import com.cbosgroup.cbos.core.actors.Actor;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData.FlowStatus;
@@ -13,15 +22,6 @@ import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * The core engine running a flow. Manages flow execution, state transitions,
@@ -141,27 +141,6 @@ public class FlowExecuter {
 	}
 
 	/**
-	 * Get a flow instance by ID.
-	 *
-	 * @param instanceId the flow instance ID
-	 * @return the flow instance, or null if not found
-	 */
-	public FlowInstance getFlowInstance(String instanceId) {
-		return activeFlows.get(instanceId);
-	}
-
-	/**
-	 * Get the status of a flow.
-	 *
-	 * @param instanceId the flow instance ID
-	 * @return the flow status
-	 */
-	public FlowStatus getFlowStatus(String instanceId) {
-		FlowInstance instance = activeFlows.get(instanceId);
-		return instance != null ? instance.getExecutionData().getFlowStatus() : null;
-	}
-
-	/**
 	 * Main execution loop - runs states until completion, pause, or terminal state.
 	 */
 	private void executeFlowLoop(FlowInstance instance) {
@@ -196,31 +175,64 @@ public class FlowExecuter {
 				}
 				// we have got the subflow meta , now lets execute this
 				FlowInstance subflowInstance = new SubflowInstance(subflowMetadata, instance);
-				//pause the parent instance
+				// pause the parent instance
 				instance.pause();
+				continueWithSubflow(subflowInstance);
 				return;
 			}
 
-			// Execute the current state
-			String nextStateId = currentState.execute(instance.getContext());
-
-			// Check if we should pause
+			// Check if we should pause, deal with pausable state
 			if (currentState.isPausable() && shouldPause(instance)) {
 				instance.pause();
 				log.info("Flow paused at state: {}", metadata.getStateId());
 				return;
 			}
 
-			// Check if terminal or no next state
-			if (currentState.isTerminal() || nextStateId == null) {
-				instance.complete();
-				log.info("Flow completed at terminal state: {}", metadata.getStateId());
+			// Execute the current state
+			String nextStateId = currentState.execute(instance.getContext());
+			if (nextStateId == null) {
+				// nowwhere to go
+				if (iSubflow(instance)) {
+					throw new RuntimeException("Subflow ended with nowhere to go");
+				}
+				if (!currentState.isTerminal()) {
+					throw new RuntimeException("No result on non terminal state");
+				}
+				log.info("Flow concluded!!!");
 				return;
 			}
 
+			// we have next state Id
+			if (iSubflow(instance)) {
+				if (currentState.isTerminal()) {
+					// we have a completetd subflow with result
+					resumeParatentflowAfterSubflowCompletion();
+				}
+			}
+
+			// regular flow with result . move on
 			// Transition to next state
 			instance.transitionTo(nextStateId);
+
 		}
+	}
+
+	private boolean iSubflow(FlowInstance instance) {
+		return instance instanceof SubflowInstance;
+	}
+
+	private void resumeParatentflowAfterSubflowCompletion() {
+		// TODO Auto-generated method stub
+
+	}
+
+	/**
+	 * Continues as subflow
+	 * 
+	 * @param subflowInstance
+	 */
+	private void continueWithSubflow(FlowInstance subflowInstance) {
+		executeFlowLoop(subflowInstance);
 	}
 
 	/**
@@ -469,18 +481,6 @@ public class FlowExecuter {
 	protected boolean shouldPause(FlowInstance instance) {
 		// Default: don't auto-pause, require explicit pause call
 		return false;
-	}
-
-	/**
-	 * Remove a completed or cancelled flow from active flows.
-	 *
-	 * @param instanceId the flow instance ID
-	 */
-	public void removeFlow(String instanceId) {
-		FlowInstance removed = activeFlows.remove(instanceId);
-		if (removed != null) {
-			log.info("Removed flow instance: {}", instanceId);
-		}
 	}
 
 	/**
