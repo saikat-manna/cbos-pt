@@ -4,7 +4,6 @@ import com.cbosgroup.cbos.core.flows.BaseFlowNode;
 import com.cbosgroup.cbos.core.flows.FlowContext;
 import com.cbosgroup.cbos.core.flows.ForkJoinNode;
 
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -20,38 +19,36 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class ForkJoinStateInstance extends BaseFlowNodeInstance {
 
-	@Getter
 	private final Map<String, BaseFlowNodeInstance> childExecutionStates = new ConcurrentHashMap<>();
 
-	@Getter
 	private final Map<String, Object> childResults = new ConcurrentHashMap<>();
 
 	public ForkJoinStateInstance(ForkJoinNode metadata) {
 		super(metadata);
 	}
 
-	public ForkJoinNode getForkJoinMetadata() {
+	private ForkJoinNode getForkJoinMetadata() {
 		return (ForkJoinNode) getMetadata();
 	}
 
-	public void addChildExecutionState(String stateId, BaseFlowNodeInstance instance) {
+	private void addChildExecutionState(String stateId, BaseFlowNodeInstance instance) {
 		childExecutionStates.put(stateId, instance);
 	}
 
-	public BaseFlowNodeInstance getChildExecutionState(String stateId) {
+	private BaseFlowNodeInstance getChildExecutionState(String stateId) {
 		return childExecutionStates.get(stateId);
 	}
 
-	public void addChildResult(String stateId, Object result) {
+	private void addChildResult(String stateId, Object result) {
 		childResults.put(stateId, result);
 		childExecutionStates.remove(stateId);
 	}
 
-	public boolean isAllChildrenCompleted() {
+	private boolean isAllChildrenCompleted() {
 		return childResults.size() == getForkJoinMetadata().getChildCount();
 	}
 
-	public boolean hasPendingChildren() {
+	private boolean hasPendingChildren() {
 		return !childExecutionStates.isEmpty();
 	}
 
