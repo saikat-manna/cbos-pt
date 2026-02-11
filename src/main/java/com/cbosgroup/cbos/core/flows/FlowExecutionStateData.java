@@ -46,4 +46,6 @@ public class FlowExecutionStateData {
         COMPLETED,
         FAILED
     }
+    
+    private String lastTransitionPointer;
 }

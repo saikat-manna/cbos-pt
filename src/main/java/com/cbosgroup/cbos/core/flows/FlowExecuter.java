@@ -30,9 +30,8 @@ public class FlowExecuter {
 
 	private FlowNodeCapabilities getCapabilities() {
 		if (capabilities == null) {
-			capabilities = new FlowNodeCapabilities(
-					actorNotifier, flowRepository,
-					this::executeFlowLoop, this::resumeFlowInstance);
+			capabilities = new FlowNodeCapabilities(actorNotifier, flowRepository, this::executeFlowLoop,
+					this::resumeFlowInstance);
 		}
 		return capabilities;
 	}
@@ -81,18 +80,14 @@ public class FlowExecuter {
 	private void executeFlowLoop(FlowInstance instance) {
 		while (instance.isRunning()) {
 			BaseFlowNodeInstance currentState = instance.getCurrentState();
-			log.debug("Executing state: {} ({})",
-					currentState.getMetadata().getStateId(), currentState.getMetadata().getStateName());
-
-			if (currentState.isPausable() && shouldPause(instance)) {
-				instance.pause();
-				return;
-			}
+			log.debug("Executing state: {} ({})", currentState.getMetadata().getStateId(),
+					currentState.getMetadata().getStateName());
 
 			String nextStateId = currentState.execute(instance.getFlowContext(), getCapabilities());
 			handleExecutionResult(instance, currentState, nextStateId);
 
-			if (!instance.isRunning()) return;
+			if (!instance.isRunning())
+				return;
 		}
 	}
 
@@ -108,14 +103,9 @@ public class FlowExecuter {
 	}
 
 	private void handleExecutionResult(FlowInstance instance, BaseFlowNodeInstance state, String nextStateId) {
-		if (nextStateId == null) {
-			if (state.isTerminal()) {
-				instance.complete();
-				log.info("Flow completed at: {}", state.getMetadata().getStateId());
-			} else {
-				instance.pause();
-				log.info("Flow paused at: {}", state.getMetadata().getStateId());
-			}
+
+		if (instance.getCurrentState().isPaused()) {
+			instance.pause();
 			return;
 		}
 		instance.transitionTo(nextStateId);
@@ -132,11 +122,7 @@ public class FlowExecuter {
 	}
 
 	private void putCurrentRunningFlow(FlowInstance instance) {
-		activeFlows.computeIfAbsent(instance.getInstanceId(), k -> new ConcurrentLinkedDeque<>())
-				.push(instance);
+		activeFlows.computeIfAbsent(instance.getInstanceId(), k -> new ConcurrentLinkedDeque<>()).push(instance);
 	}
 
-	protected boolean shouldPause(FlowInstance instance) {
-		return false;
-	}
 }

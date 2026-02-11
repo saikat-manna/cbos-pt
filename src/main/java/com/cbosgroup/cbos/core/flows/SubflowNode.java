@@ -4,7 +4,7 @@ import lombok.Data;
 import lombok.experimental.SuperBuilder;
 
 /**
- * A state that encapsulates a substate in it 
+ * A state that encapsulates a substate in it
  */
 @Data
 @SuperBuilder
@@ -15,8 +15,4 @@ public class SubflowNode extends BaseFlowNode {
 	 */
 	private String flowId;
 
-	/**
-	 * State to transition to in parent flow after subflow completes
-	 */
-	private String nextStateId;
 }

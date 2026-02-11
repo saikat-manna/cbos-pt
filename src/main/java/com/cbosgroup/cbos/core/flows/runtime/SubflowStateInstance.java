@@ -6,8 +6,8 @@ import com.cbosgroup.cbos.core.flows.FlowNodeCapabilities;
 import com.cbosgroup.cbos.core.flows.SubflowNode;
 
 /**
- * Runtime instance of a SubflowNode. Manages the lifecycle of executing
- * a subflow within a parent flow.
+ * Runtime instance of a SubflowNode. Manages the lifecycle of executing a
+ * subflow within a parent flow.
  */
 public class SubflowStateInstance extends BaseFlowNodeInstance {
 
@@ -39,7 +39,11 @@ public class SubflowStateInstance extends BaseFlowNodeInstance {
 			status = Status.PAUSED;
 			return null;
 		}
-		status = Status.COMPLETED;
-		return ((SubflowNode) getMetadata()).getNextStateId();
+		if (subflowInstance.isCompleted()) {
+			return subflowInstance.getExecutionData().getLastTransitionPointer(); // the subflow is complete return the
+																					// result
+		}
+		throw new IllegalStateException("Subflow execution returned with state neither complete or paused");
+
 	}
 }

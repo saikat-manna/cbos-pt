@@ -81,4 +81,12 @@ public abstract class BaseFlowNodeInstance {
 	public boolean isPausable() {
 		return metadata.isPausable();
 	}
+
+	public boolean isPaused() {
+		return status == Status.PAUSED;
+	}
+
+	public boolean isCompleted() {
+		return status == Status.COMPLETED;
+	}
 }
