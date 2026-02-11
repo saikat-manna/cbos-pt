@@ -1,6 +1,8 @@
 package com.cbosgroup.cbos.core.flows.runtime;
 
 import com.cbosgroup.cbos.core.flows.FlowContext;
+import com.cbosgroup.cbos.core.flows.FlowMetadata;
+import com.cbosgroup.cbos.core.flows.FlowNodeCapabilities;
 import com.cbosgroup.cbos.core.flows.SubflowNode;
 
 /**
@@ -9,23 +11,35 @@ import com.cbosgroup.cbos.core.flows.SubflowNode;
  */
 public class SubflowStateInstance extends BaseFlowNodeInstance {
 
+	private SubflowInstance subflowInstance;
+
 	public SubflowStateInstance(SubflowNode metadata) {
 		super(metadata);
 	}
 
-	public SubflowNode getSubflowMetadata() {
-		return (SubflowNode) getMetadata();
+	@Override
+	protected String doExecute(FlowContext context, FlowNodeCapabilities capabilities) {
+		SubflowNode meta = (SubflowNode) getMetadata();
+		FlowMetadata subflowMeta = capabilities.resolveFlow(meta.getFlowId());
+		subflowInstance = new SubflowInstance(subflowMeta, context);
+		subflowInstance.initialize();
+		capabilities.executeFlow(subflowInstance);
+		return evaluateSubflowResult();
 	}
 
 	@Override
-	protected String doExecute(FlowContext context) {
-		// TODO: subflow execution handled by FlowExecuter for now
-		throw new UnsupportedOperationException("Not yet implemented");
+	protected String doResume(FlowContext context, FlowNodeCapabilities capabilities) {
+		subflowInstance.getFlowContext().setInput(context.getInput());
+		capabilities.resumeFlow(subflowInstance, subflowInstance.getFlowContext());
+		return evaluateSubflowResult();
 	}
 
-	@Override
-	protected String doResume(FlowContext context) {
-		// TODO: resume after subflow completion
-		throw new UnsupportedOperationException("Not yet implemented");
+	private String evaluateSubflowResult() {
+		if (subflowInstance.isPaused() || subflowInstance.isAwaitingUserInput()) {
+			status = Status.PAUSED;
+			return null;
+		}
+		status = Status.COMPLETED;
+		return ((SubflowNode) getMetadata()).getNextStateId();
 	}
 }

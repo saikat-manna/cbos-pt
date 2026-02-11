@@ -1,10 +1,9 @@
 package com.cbosgroup.cbos.core.flows.runtime;
 
-import java.util.Map;
-
 import com.cbosgroup.cbos.core.flows.ActionFlowNode;
 import com.cbosgroup.cbos.core.flows.BaseFlowNode;
 import com.cbosgroup.cbos.core.flows.FlowContext;
+import com.cbosgroup.cbos.core.flows.FlowNodeCapabilities;
 import com.cbosgroup.cbos.core.flows.ForkJoinNode;
 import com.cbosgroup.cbos.core.flows.SubflowNode;
 import com.cbosgroup.cbos.core.flows.UserTaskNode;
@@ -20,20 +19,11 @@ public abstract class BaseFlowNodeInstance {
 		CREATED, RUNNING, PAUSED, COMPLETED;
 	}
 
-	/**
-	 * Reference to metadata
-	 */
 	@Getter
 	private BaseFlowNode metadata;
 
-	/**
-	 * Whether this state instance has been executed
-	 */
 	protected Status status;
 
-	/**
-	 * Result of the last execution (next state ID or null)
-	 */
 	private String lastResult;
 
 	public BaseFlowNodeInstance(BaseFlowNode metadata) {
@@ -58,24 +48,21 @@ public abstract class BaseFlowNodeInstance {
 		}
 	}
 
-	/**
-	 * Executes the logic held in current state
-	 * 
-	 * @param context the execution context
-	 * @return next state ID, or null if terminal
-	 */
-	public String execute(FlowContext context) {
-		return doExecute(context);
+	public String execute(FlowContext context, FlowNodeCapabilities capabilities) {
+		return doExecute(context, capabilities);
 	}
 
-	protected String runOrResume(FlowContext context) {
+	public String resume(FlowContext context, FlowNodeCapabilities capabilities) {
+		return doResume(context, capabilities);
+	}
+
+	protected String runOrResume(FlowContext context, FlowNodeCapabilities capabilities) {
 		if (status == Status.COMPLETED)
 			throw new IllegalStateException("Flow node has completed");
 		if (status == Status.CREATED) {
-			return doExecute(context);
+			return doExecute(context, capabilities);
 		} else if (status == Status.PAUSED) {
-			// get additional inputs
-			String returnVal = doResume(context);
+			String returnVal = doResume(context, capabilities);
 			context.setInput(null);
 			return returnVal;
 		} else {
@@ -83,30 +70,14 @@ public abstract class BaseFlowNodeInstance {
 		}
 	}
 
-	protected abstract String doResume(FlowContext context);
+	protected abstract String doResume(FlowContext context, FlowNodeCapabilities capabilities);
 
-	protected abstract String doExecute(FlowContext context);
+	protected abstract String doExecute(FlowContext context, FlowNodeCapabilities capabilities);
 
-	/**
-	 * Resume a paused state
-	 * 
-	 * @param context the execution context
-	 * @return next state ID, or null if terminal
-	 */
-	public String resume(Map<String, Object> context) {
-		return execute(context);
-	}
-
-	/**
-	 * Check if this is a terminal state
-	 */
 	public boolean isTerminal() {
 		return metadata.isTerminal();
 	}
 
-	/**
-	 * Check if this state can be paused
-	 */
 	public boolean isPausable() {
 		return metadata.isPausable();
 	}

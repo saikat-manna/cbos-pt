@@ -2,6 +2,7 @@ package com.cbosgroup.cbos.core.flows.runtime;
 
 import com.cbosgroup.cbos.core.flows.BaseFlowNode;
 import com.cbosgroup.cbos.core.flows.FlowContext;
+import com.cbosgroup.cbos.core.flows.FlowNodeCapabilities;
 import com.cbosgroup.cbos.core.flows.ForkJoinNode;
 
 import lombok.extern.slf4j.Slf4j;
@@ -55,12 +56,12 @@ public class ForkJoinStateInstance extends BaseFlowNodeInstance {
 	/**
 	 * Resume a specific child within this fork-join.
 	 */
-	public String resumeChild(String childStateId, FlowContext context) {
+	public String resumeChild(String childStateId, FlowContext context, FlowNodeCapabilities capabilities) {
 		BaseFlowNodeInstance childInstance = getChildExecutionState(childStateId);
 		if (childInstance == null) {
 			throw new IllegalStateException("Child state not found or already completed: " + childStateId);
 		}
-		String result = childInstance.resume(context);
+		String result = childInstance.resume(context, capabilities);
 		if (childInstance.status == Status.COMPLETED) {
 			addChildResult(childStateId, result);
 		}
@@ -68,7 +69,7 @@ public class ForkJoinStateInstance extends BaseFlowNodeInstance {
 	}
 
 	@Override
-	protected String doExecute(FlowContext context) {
+	protected String doExecute(FlowContext context, FlowNodeCapabilities capabilities) {
 		ForkJoinNode forkJoinMeta = getForkJoinMetadata();
 		String forkStateId = forkJoinMeta.getStateId();
 		log.info("Executing fork-join state: {}", forkStateId);
@@ -82,7 +83,7 @@ public class ForkJoinStateInstance extends BaseFlowNodeInstance {
 
 			if (childMeta.isPausable()) {
 				// Pausable (includes UserTask): execute — node sets its own status
-				String result = childInstance.execute(context);
+				String result = childInstance.execute(context, capabilities);
 				if (childInstance.status == Status.PAUSED) {
 					addChildExecutionState(childStateId, childInstance);
 					log.info("Fork-join child {} paused", childStateId);
@@ -93,7 +94,7 @@ public class ForkJoinStateInstance extends BaseFlowNodeInstance {
 			} else {
 				// Non-pausable: execute in parallel
 				CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-					String result = childInstance.execute(context);
+					String result = childInstance.execute(context, capabilities);
 					addChildResult(childStateId, result);
 					log.info("Fork-join child {} completed with result: {}", childStateId, result);
 				});
@@ -115,11 +116,11 @@ public class ForkJoinStateInstance extends BaseFlowNodeInstance {
 	}
 
 	@Override
-	protected String doResume(FlowContext context) {
+	protected String doResume(FlowContext context, FlowNodeCapabilities capabilities) {
 		for (var entry : childExecutionStates.entrySet()) {
 			String childStateId = entry.getKey();
 			BaseFlowNodeInstance childInstance = entry.getValue();
-			String result = childInstance.resume(context);
+			String result = childInstance.resume(context, capabilities);
 			if (childInstance.status == Status.COMPLETED) {
 				addChildResult(childStateId, result);
 				log.info("Fork-join child {} completed on resume with result: {}", childStateId, result);

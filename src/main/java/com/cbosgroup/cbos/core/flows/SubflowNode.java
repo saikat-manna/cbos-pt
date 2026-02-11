@@ -13,5 +13,10 @@ public class SubflowNode extends BaseFlowNode {
 	/**
 	 * The id of the flow in FlowRepositiry
 	 */
-	private String flowId; 
+	private String flowId;
+
+	/**
+	 * State to transition to in parent flow after subflow completes
+	 */
+	private String nextStateId;
 }

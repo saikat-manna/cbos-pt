@@ -11,7 +11,6 @@ import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,7 +51,6 @@ public class FlowInstance {
         this.version = version;
         this.history = new FlowExecutionHistory();
         this.executionData = FlowExecutionStateData.builder()
-                .context(new HashMap<>())
                 .flowStatus(FlowStatus.NOT_STARTED)
                 .build();
     }
@@ -129,13 +127,6 @@ public class FlowInstance {
      */
     public boolean isAwaitingUserInput() {
         return executionData.getFlowStatus() == FlowStatus.AWAITING_USER_INPUT;
-    }
-
-    /**
-     * Get the context map
-     */
-    public Map<String, Object> getContext() {
-        return executionData.getContext();
     }
 
     /**

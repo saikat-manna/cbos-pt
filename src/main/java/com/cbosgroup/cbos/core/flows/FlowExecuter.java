@@ -6,7 +6,6 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 
 import com.cbosgroup.cbos.core.Version;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData.FlowStatus;
-import com.cbosgroup.cbos.core.flows.repository.PrebuiltFlowsResposirty;
 import com.cbosgroup.cbos.core.flows.runtime.BaseFlowNodeInstance;
 import com.cbosgroup.cbos.core.flows.runtime.FlowInstance;
 
@@ -20,18 +19,29 @@ import lombok.extern.slf4j.Slf4j;
 public class FlowExecuter {
 
 	@NonNull
-	private PrebuiltFlowsResposirty flowResposirty;
+	private FlowRepository flowRepository;
 
 	private final Map<String, ConcurrentLinkedDeque<FlowInstance>> activeFlows = new ConcurrentHashMap<>();
 
 	@Setter
 	private ActorNotifier actorNotifier;
 
+	private FlowNodeCapabilities capabilities;
+
+	private FlowNodeCapabilities getCapabilities() {
+		if (capabilities == null) {
+			capabilities = new FlowNodeCapabilities(
+					actorNotifier, flowRepository,
+					this::executeFlowLoop, this::resumeFlowInstance);
+		}
+		return capabilities;
+	}
+
 	// ── Public API ──────────────────────────────────────────────
 
 	public String runFlow(FlowMetadata template, Version version) {
 		FlowInstance instance = new FlowInstance(template, version);
-		instance.getFlowContext().setActorNotifier(actorNotifier);
+		instance.getFlowContext().setVersion(version);
 		putCurrentRunningFlow(instance);
 		log.info("Starting flow '{}' with instance ID: {}", template.getFlowName(), instance.getInstanceId());
 		instance.initialize();
@@ -49,15 +59,7 @@ public class FlowExecuter {
 		if (input != null) {
 			instance.getFlowContext().setInput(input);
 		}
-		instance.getExecutionData().setFlowStatus(FlowStatus.RUNNING);
-
-		BaseFlowNodeInstance currentState = instance.getCurrentState();
-		String nextStateId = currentState.resume(instance.getFlowContext());
-		handleExecutionResult(instance, currentState, nextStateId);
-
-		if (instance.isRunning()) {
-			executeFlowLoop(instance);
-		}
+		resumeFlowInstance(instance, instance.getFlowContext());
 	}
 
 	public void pauseFlow(String instanceId) {
@@ -87,10 +89,21 @@ public class FlowExecuter {
 				return;
 			}
 
-			String nextStateId = currentState.execute(instance.getFlowContext());
+			String nextStateId = currentState.execute(instance.getFlowContext(), getCapabilities());
 			handleExecutionResult(instance, currentState, nextStateId);
 
 			if (!instance.isRunning()) return;
+		}
+	}
+
+	private void resumeFlowInstance(FlowInstance instance, FlowContext context) {
+		instance.getExecutionData().setFlowStatus(FlowStatus.RUNNING);
+		BaseFlowNodeInstance currentState = instance.getCurrentState();
+		String nextStateId = currentState.resume(context, getCapabilities());
+		handleExecutionResult(instance, currentState, nextStateId);
+
+		if (instance.isRunning()) {
+			executeFlowLoop(instance);
 		}
 	}
 

@@ -2,9 +2,9 @@ package com.cbosgroup.cbos.core.flows.runtime;
 
 import java.util.Map;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 
 import com.cbosgroup.cbos.core.flows.FlowContext;
+import com.cbosgroup.cbos.core.flows.FlowNodeCapabilities;
 import com.cbosgroup.cbos.core.flows.UserTaskNode;
 
 public class UserTaskInstance extends BaseFlowNodeInstance {
@@ -19,13 +19,12 @@ public class UserTaskInstance extends BaseFlowNodeInstance {
 	}
 
 	@Override
-	protected String doResume(FlowContext context) {
+	protected String doResume(FlowContext context, FlowNodeCapabilities capabilities) {
 		return executeOrPause(context);
 	}
 
 	private String executeOrPause(FlowContext context) {
 		if (userInputExtractor.apply(context, userInput)) {
-			// input satisfied
 			String returnVal = onUserInputeceived.apply(context, userInput);
 			status = Status.COMPLETED;
 			return returnVal;
@@ -35,9 +34,7 @@ public class UserTaskInstance extends BaseFlowNodeInstance {
 	}
 
 	@Override
-	protected String doExecute(FlowContext context) {
-
+	protected String doExecute(FlowContext context, FlowNodeCapabilities capabilities) {
 		return executeOrPause(context);
 	}
-
 }

@@ -1,7 +1,6 @@
 package com.cbosgroup.cbos.core.flows;
 
 import com.cbosgroup.cbos.core.actors.Actor;
-import com.cbosgroup.cbos.core.flows.runtime.FlowInstance;
 
 import java.util.List;
 
@@ -11,12 +10,5 @@ import java.util.List;
  */
 public interface ActorNotifier {
 
-    /**
-     * Notify actors that a user task is waiting for their response.
-     *
-     * @param actors list of actors to notify
-     * @param task the user task awaiting response
-     * @param flowInstance the flow instance context
-     */
-    void notifyActors(List<Actor> actors, UserTaskNode task, FlowInstance flowInstance);
+    void notifyActors(List<Actor> actors, UserTaskNode task);
 }
