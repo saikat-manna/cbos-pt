@@ -64,7 +64,7 @@ public class FlowInstance {
         if (startMeta == null) {
             throw new IllegalStateException("Flow has no start state defined");
         }
-        FlowStateInstance currentInstance  = new FlowStateInstance(startMeta);
+        BaseFlowNodeInstance currentInstance = BaseFlowNodeInstance.createInstance(startMeta);
         this.executionData.setCurrentStateId(startMeta.getStateId());
         this.executionData.setCurrentState(currentInstance);
         this.executionData.setFlowStatus(FlowStatus.RUNNING);
@@ -79,7 +79,7 @@ public class FlowInstance {
         if (nextMeta == null) {
             throw new IllegalStateException("Unknown state: " + nextStateId);
         }
-        FlowStateInstance currentInstance  = new FlowStateInstance(nextMeta);
+        BaseFlowNodeInstance currentInstance = BaseFlowNodeInstance.createInstance(nextMeta);
         this.executionData.setCurrentStateId(nextStateId);
         this.executionData.setCurrentState(currentInstance);
         history.addEntry(nextStateId, "TRANSITIONED", "Moved to state: " + nextMeta.getStateName());
@@ -151,7 +151,7 @@ public class FlowInstance {
                 .collect(Collectors.toList());
     }
 
-	public FlowStateInstance getCurrentState() {
+	public BaseFlowNodeInstance getCurrentState() {
 		return executionData.getCurrentState();
 	}
 }

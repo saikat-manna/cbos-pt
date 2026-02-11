@@ -2,7 +2,6 @@ package com.cbosgroup.cbos.core.flows.runtime;
 
 import com.cbosgroup.cbos.core.flows.BaseFlowNode;
 import com.cbosgroup.cbos.core.flows.FlowContext;
-import com.cbosgroup.cbos.core.flows.FlowStateInstance;
 import com.cbosgroup.cbos.core.flows.ForkJoinNode;
 import com.cbosgroup.cbos.core.flows.UserTaskNode;
 
@@ -50,7 +49,7 @@ public class ForkJoinStateInstance extends BaseFlowNodeInstance {
 	/**
 	 * Get a child's execution state
 	 */
-	public FlowStateInstance getChildExecutionState(String stateId) {
+	public BaseFlowNodeInstance getChildExecutionState(String stateId) {
 		return childExecutionStates.get(stateId);
 	}
 

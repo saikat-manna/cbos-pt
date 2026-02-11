@@ -14,7 +14,7 @@ import com.cbosgroup.cbos.core.actors.Actor;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData.FlowStatus;
 import com.cbosgroup.cbos.core.flows.repository.PrebuiltFlowsResposirty;
 import com.cbosgroup.cbos.core.flows.runtime.FlowInstance;
-import com.cbosgroup.cbos.core.flows.runtime.FlowStateInstance;
+import com.cbosgroup.cbos.core.flows.runtime.BaseFlowNodeInstance;
 import com.cbosgroup.cbos.core.flows.runtime.ForkJoinStateInstance;
 import com.cbosgroup.cbos.core.flows.runtime.SubflowInstance;
 
@@ -109,7 +109,7 @@ public class FlowExecuter {
 
 		// Resume from current state
 		instance.getExecutionData().setFlowStatus(FlowStatus.RUNNING);
-		FlowStateInstance currentState = instance.getCurrentState();
+		BaseFlowNodeInstance currentState = instance.getCurrentState();
 
 		// Resume the current state and continue execution
 		String nextStateId = currentState.resume(instance.getContext());
@@ -145,7 +145,7 @@ public class FlowExecuter {
 	 */
 	private void executeFlowLoop(FlowInstance instance) {
 		while (instance.isRunning()) {
-			FlowStateInstance currentState = instance.getCurrentState();
+			BaseFlowNodeInstance currentState = instance.getCurrentState();
 			BaseFlowNode metadata = currentState.getMetadata();
 
 			log.debug("Executing state: {} ({})", metadata.getStateId(), metadata.getStateName());
@@ -256,20 +256,20 @@ public class FlowExecuter {
 
 			if (childMeta instanceof UserTaskNode userTask) {
 				// UserTask: store in pending, notify actors
-				FlowStateInstance childInstance = new FlowStateInstance(childMeta);
+				BaseFlowNodeInstance childInstance = BaseFlowNodeInstance.createInstance(childMeta);
 				forkInstance.addChildExecutionState(childStateId, childInstance);
 				log.info("Fork-join child {} awaiting user input", childStateId);
 				notifyActorsForUserTask(instance, userTask);
 			} else if (childMeta.isPausable()) {
 				// Pausable: execute and store instance
-				FlowStateInstance childInstance = new FlowStateInstance(childMeta);
+				BaseFlowNodeInstance childInstance = BaseFlowNodeInstance.createInstance(childMeta);
 				childInstance.execute(instance.getContext());
 				forkInstance.addChildExecutionState(childStateId, childInstance);
 				log.info("Fork-join child {} paused", childStateId);
 			} else {
 				// Sync: execute in parallel via thread pool
 				CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-					FlowStateInstance childInstance = new FlowStateInstance(childMeta);
+					BaseFlowNodeInstance childInstance = BaseFlowNodeInstance.createInstance(childMeta);
 					String result = childInstance.execute(instance.getContext());
 					forkInstance.addChildResult(childStateId, result);
 					log.info("Fork-join child {} completed with result: {}", childStateId, result);
@@ -329,7 +329,7 @@ public class FlowExecuter {
 			throw new IllegalStateException("Flow instance not found: " + instanceId);
 		}
 
-		FlowStateInstance currentState = instance.getCurrentState();
+		BaseFlowNodeInstance currentState = instance.getCurrentState();
 		if (!(currentState instanceof ForkJoinStateInstance forkInstance)) {
 			throw new IllegalStateException("Current state is not a fork-join");
 		}
@@ -360,7 +360,7 @@ public class FlowExecuter {
 			throw new IllegalStateException("Flow instance not found: " + instanceId);
 		}
 
-		FlowStateInstance currentState = instance.getCurrentState();
+		BaseFlowNodeInstance currentState = instance.getCurrentState();
 		if (!(currentState instanceof ForkJoinStateInstance forkInstance)) {
 			throw new IllegalStateException("Current state is not a fork-join");
 		}

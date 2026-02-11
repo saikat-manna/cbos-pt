@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.cbosgroup.cbos.core.flows.runtime.BaseFlowNodeInstance;
-import com.cbosgroup.cbos.core.flows.runtime.FlowStateInstance;
 
 /**
  * Tracks the execution state of a running flow
