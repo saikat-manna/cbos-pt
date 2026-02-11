@@ -119,9 +119,24 @@ public class ForkJoinStateInstance extends BaseFlowNodeInstance {
 
 	@Override
 	protected String doResume(FlowContext context) {
+		for (var entry : childExecutionStates.entrySet()) {
+			String childStateId = entry.getKey();
+			BaseFlowNodeInstance childInstance = entry.getValue();
+			String result = childInstance.resume(context);
+			if (childInstance.status == Status.COMPLETED) {
+				addChildResult(childStateId, result);
+				log.info("Fork-join child {} completed on resume with result: {}", childStateId, result);
+			} else {
+				log.debug("Fork-join child {} still paused after resume", childStateId);
+			}
+		}
+
 		if (isAllChildrenCompleted()) {
 			return mergeAndComplete(context);
 		}
+
+		log.info("Fork-join {} still waiting for {} pending children",
+				getMetadata().getStateId(), childExecutionStates.size());
 		return null;
 	}
 
