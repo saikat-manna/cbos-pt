@@ -146,12 +146,12 @@ public class FlowExecuter {
 	private void executeFlowLoop(FlowInstance instance) {
 		while (instance.isRunning()) {
 			FlowStateInstance currentState = instance.getCurrentState();
-			FlowStateMetadata metadata = currentState.getMetadata();
+			BaseFlowNode metadata = currentState.getMetadata();
 
 			log.debug("Executing state: {} ({})", metadata.getStateId(), metadata.getStateName());
 
 			// Check if this is a UserTaskState - auto-pause and wait for user input
-			if (metadata instanceof UserTaskState userTask) {
+			if (metadata instanceof UserTaskNode userTask) {
 				instance.awaitUserInput();
 				log.info("Flow awaiting user input at state: {}", metadata.getStateId());
 				notifyActorsForUserTask(instance, userTask);
@@ -159,24 +159,25 @@ public class FlowExecuter {
 			}
 
 			// Check if this is a ForkJoinState
-			if (metadata instanceof ForkJoinState forkJoinMeta) {
+			if (metadata instanceof ForkJoinNode forkJoinMeta) {
 				executeForkJoin(instance, forkJoinMeta);
 				return;
 			}
 
 			// subflow
-			if (metadata instanceof SubflowState) {
+			if (metadata instanceof SubflowNode) {
 				// subflow execution
 				// 1. Get the flowMeta from the repository
-				FlowMetadata subflowMetadata = flowResposirty.getFlowByName(((SubflowState) metadata).getFlowId());
+				FlowMetadata subflowMetadata = flowResposirty.getFlowByName(((SubflowNode) metadata).getFlowId());
 				if (subflowMetadata == null) {
 					throw new RuntimeException(
-							"There is no flow named " + ((SubflowState) metadata).getFlowId() + " In repository");
+							"There is no flow named " + ((SubflowNode) metadata).getFlowId() + " In repository");
 				}
 				// we have got the subflow meta , now lets execute this
 				FlowInstance subflowInstance = new SubflowInstance(subflowMetadata, instance);
 				// pause the parent instance
 				instance.pause();
+				// change the stack
 				continueWithSubflow(subflowInstance);
 				return;
 			}
@@ -206,7 +207,10 @@ public class FlowExecuter {
 			if (iSubflow(instance)) {
 				if (currentState.isTerminal()) {
 					// we have a completetd subflow with result
+					SubflowInstance currentSubflowInstance = (SubflowInstance) instance;
 					resumeParatentflowAfterSubflowCompletion();
+					// 1. Pop the current subflow
+
 				}
 			}
 
@@ -238,7 +242,7 @@ public class FlowExecuter {
 	/**
 	 * Execute a fork-join state - runs children in parallel.
 	 */
-	private void executeForkJoin(FlowInstance instance, ForkJoinState forkJoinMeta) {
+	private void executeForkJoin(FlowInstance instance, ForkJoinNode forkJoinMeta) {
 		String forkStateId = forkJoinMeta.getStateId();
 		log.info("Executing fork-join state: {}", forkStateId);
 
@@ -247,10 +251,10 @@ public class FlowExecuter {
 
 		List<CompletableFuture<Void>> syncFutures = new ArrayList<>();
 
-		for (FlowStateMetadata childMeta : forkJoinMeta.getChildStates()) {
+		for (BaseFlowNode childMeta : forkJoinMeta.getChildStates()) {
 			String childStateId = childMeta.getStateId();
 
-			if (childMeta instanceof UserTaskState userTask) {
+			if (childMeta instanceof UserTaskNode userTask) {
 				// UserTask: store in pending, notify actors
 				FlowStateInstance childInstance = new FlowStateInstance(childMeta);
 				forkInstance.addChildExecutionState(childStateId, childInstance);
@@ -294,7 +298,7 @@ public class FlowExecuter {
 	 * Complete a fork-join state - call merge function and continue.
 	 */
 	private void completeForkJoin(FlowInstance instance, ForkJoinStateInstance forkInstance) {
-		ForkJoinState forkJoinMeta = forkInstance.getForkJoinMetadata();
+		ForkJoinNode forkJoinMeta = forkInstance.getForkJoinMetadata();
 		String forkStateId = forkJoinMeta.getStateId();
 
 		log.info("Fork-join {} all children completed, calling merge function", forkStateId);
@@ -366,8 +370,8 @@ public class FlowExecuter {
 			throw new IllegalStateException("Child state not found: " + childStateId);
 		}
 
-		FlowStateMetadata childMeta = childInstance.getMetadata();
-		if (!(childMeta instanceof UserTaskState userTask)) {
+		BaseFlowNode childMeta = childInstance.getMetadata();
+		if (!(childMeta instanceof UserTaskNode userTask)) {
 			throw new IllegalStateException("Child state is not a user task: " + childStateId);
 		}
 
@@ -388,23 +392,27 @@ public class FlowExecuter {
 	 * @throws IllegalStateException    if flow not found or not awaiting input
 	 * @throws IllegalArgumentException if response validation fails
 	 */
-	public void submitUserResponse(String instanceId, Map<String, Object> response) {
+	public void resumeWithInput(String instanceId, FlowResuptionInput input) {
 		FlowInstance instance = getCurrentRunningFlow(instanceId);
 		if (instance == null) {
 			throw new IllegalStateException("Flow instance not found: " + instanceId);
 		}
 
-		if (!instance.isAwaitingUserInput()) {
-			throw new IllegalStateException(
-					"Flow is not awaiting user input. Current status: " + instance.getExecutionData().getFlowStatus());
-		}
+		// the flow can be resumed only in certain conditions
 
-		FlowStateMetadata metadata = instance.getCurrentState().getMetadata();
-		if (!(metadata instanceof UserTaskState userTask)) {
+		BaseFlowNode metadata = instance.getCurrentState().getMetadata();
+
+		if (metadata instanceof UserTaskNode) {
+
+			String nextStateId = processUserTaskResponse(instance, (UserTaskNode) metadata, input);
+		} else if (metadata instanceof SubflowNode) {
+
+		} else if (instance.getCurrentState() instanceof ForkJoinStateInstance) {
+
+		}
+		if (!(metadata instanceof UserTaskNode userTask)) {
 			throw new IllegalStateException("Current state is not a user task");
 		}
-
-		String nextStateId = processUserTaskResponse(instance, userTask, response);
 
 		// Resume flow execution
 		instance.getExecutionData().setFlowStatus(FlowStatus.RUNNING);
@@ -422,10 +430,10 @@ public class FlowExecuter {
 	 * Process user task response - validate, store, and execute handler. Common
 	 * method used by both regular user tasks and fork-join user tasks.
 	 */
-	private String processUserTaskResponse(FlowInstance instance, UserTaskState userTask,
+	private String processUserTaskResponse(FlowInstance instance, UserTaskNode userTask,
 			Map<String, Object> response) {
 		// Validate response
-		UserTaskState.ValidationResult validation = userTask.validateResponse(response);
+		UserTaskNode.ValidationResult validation = userTask.validateResponse(response);
 		if (!validation.isValid()) {
 			throw new IllegalArgumentException("Invalid response: " + validation.getErrorMessage());
 		}
@@ -445,7 +453,7 @@ public class FlowExecuter {
 	/**
 	 * Notify actors for a user task.
 	 */
-	private void notifyActorsForUserTask(FlowInstance instance, UserTaskState userTask) {
+	private void notifyActorsForUserTask(FlowInstance instance, UserTaskNode userTask) {
 		if (actorNotifier != null && userTask.getEligibleRoles() != null) {
 			List<Actor> eligibleActors = instance.getActorsByRoles(userTask.getEligibleRoles());
 			if (!eligibleActors.isEmpty()) {
@@ -461,14 +469,14 @@ public class FlowExecuter {
 	 * @param instanceId the flow instance ID
 	 * @return the UserTaskState, or null if not awaiting input
 	 */
-	public UserTaskState getPendingUserTask(String instanceId) {
+	public UserTaskNode getPendingUserTask(String instanceId) {
 		FlowInstance instance = getCurrentRunningFlow(instanceId);
 		if (instance == null || !instance.isAwaitingUserInput()) {
 			return null;
 		}
 
-		FlowStateMetadata metadata = instance.getCurrentState().getMetadata();
-		return metadata instanceof UserTaskState ? (UserTaskState) metadata : null;
+		BaseFlowNode metadata = instance.getCurrentState().getMetadata();
+		return metadata instanceof UserTaskNode ? (UserTaskNode) metadata : null;
 	}
 
 	/**

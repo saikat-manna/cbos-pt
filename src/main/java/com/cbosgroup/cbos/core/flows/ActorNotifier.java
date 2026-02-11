@@ -18,5 +18,5 @@ public interface ActorNotifier {
      * @param task the user task awaiting response
      * @param flowInstance the flow instance context
      */
-    void notifyActors(List<Actor> actors, UserTaskState task, FlowInstance flowInstance);
+    void notifyActors(List<Actor> actors, UserTaskNode task, FlowInstance flowInstance);
 }

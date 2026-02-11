@@ -17,12 +17,12 @@ import java.util.function.BiFunction;
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
-public class ForkJoinState extends FlowStateMetadata {
+public class ForkJoinNode extends BaseFlowNode {
 
     /**
      * Child states to execute in parallel
      */
-    private final List<FlowStateMetadata> childStates;
+    private final List<BaseFlowNode> childStates;
 
     /**
      * Merge function called when all child states complete.
@@ -30,7 +30,7 @@ public class ForkJoinState extends FlowStateMetadata {
      */
     private final BiFunction<Map<String, Object>, Map<String, Object>, String> mergeFunction;
 
-    public ForkJoinState(String stateId, String stateName, FlowStateMetadata[] childStates,
+    public ForkJoinNode(String stateId, String stateName, BaseFlowNode[] childStates,
                          BiFunction<Map<String, Object>, Map<String, Object>, String> mergeFunction) {
         super();
         setStateId(stateId);
@@ -41,7 +41,7 @@ public class ForkJoinState extends FlowStateMetadata {
         this.mergeFunction = mergeFunction;
     }
 
-    public FlowStateMetadata getChildState(String stateId) {
+    public BaseFlowNode getChildState(String stateId) {
         return childStates.stream()
                 .filter(s -> s.getStateId().equals(stateId))
                 .findFirst()

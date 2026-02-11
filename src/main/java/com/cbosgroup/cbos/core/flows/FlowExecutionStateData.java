@@ -5,6 +5,7 @@ import lombok.Data;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.cbosgroup.cbos.core.flows.runtime.BaseFlowNodeInstance;
 import com.cbosgroup.cbos.core.flows.runtime.FlowStateInstance;
 
 /**
@@ -18,12 +19,12 @@ public class FlowExecutionStateData {
      * Context data passed between states
      */
     @Builder.Default
-    private Map<String, Object> context = new HashMap<>();
+    private FlowContext context  = new FlowContext();
 
     /**
      * Current state instance being executed
      */
-    private FlowStateInstance currentState;
+    private BaseFlowNodeInstance currentState;
 
     /**
      * Current state of the flow execution

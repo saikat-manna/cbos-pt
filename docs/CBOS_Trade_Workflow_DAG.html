@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CBOS — Trade Workflow DAG v3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232733;
+    --border: #2e3345;
+    --border-light: #3a4058;
+    --text: #e2e8f0;
+    --text-dim: #8892a8;
+    --text-muted: #5a6278;
+
+    --blue: #3b82f6; --blue-bg: rgba(59,130,246,0.12);
+    --green: #22c55e; --green-bg: rgba(34,197,94,0.12);
+    --orange: #f97316; --orange-bg: rgba(249,115,22,0.12);
+    --purple: #a855f7; --purple-bg: rgba(168,85,247,0.12);
+    --teal: #14b8a6; --teal-bg: rgba(20,184,166,0.12);
+    --pink: #ec4899; --pink-bg: rgba(236,72,153,0.12);
+    --yellow: #eab308; --yellow-bg: rgba(234,179,8,0.12);
+    --red: #ef4444; --red-bg: rgba(239,68,68,0.12);
+    --cyan: #06b6d4; --cyan-bg: rgba(6,182,212,0.12);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 28px 32px;
+    min-width: 1500px;
+  }
+
+  /* ============ HEADER ============ */
+  .header { text-align:center; margin-bottom:20px; padding-bottom:18px; border-bottom:1px solid var(--border); }
+  .header h1 {
+    font-size:26px; font-weight:900; letter-spacing:-0.5px;
+    background: linear-gradient(135deg, #3b82f6, #a855f7, #ec4899);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .header p { font-size:12px; color:var(--text-dim); margin-top:4px; }
+
+  /* ============ LEGEND ============ */
+  .legend {
+    display:flex; justify-content:center; gap:20px; flex-wrap:wrap;
+    margin-bottom:22px; padding:12px 20px;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  }
+  .legend-item { display:flex; align-items:center; gap:6px; font-size:10px; font-weight:600; color:var(--text-dim); }
+  .lg-state { width:40px;height:18px;border-radius:10px;background:var(--blue-bg);border:1.5px solid rgba(59,130,246,0.3); }
+  .lg-action { width:40px;height:18px;border-radius:3px;background:rgba(245,158,11,0.15);border:1.5px solid rgba(245,158,11,0.4); }
+  .lg-decision { width:22px;height:22px;background:var(--red-bg);border:2px solid rgba(239,68,68,0.5);transform:rotate(45deg);border-radius:2px; }
+  .lg-sys { width:40px;height:18px;border-radius:3px;background:var(--cyan-bg);border:1.5px solid rgba(6,182,212,0.35); }
+  .lg-fork { width:22px;height:22px;background:var(--yellow-bg);border:2px solid rgba(234,179,8,0.5);transform:rotate(45deg);border-radius:2px; }
+  .lg-ms { width:40px;height:18px;border-radius:10px;background:linear-gradient(135deg,var(--blue),var(--purple));display:flex;align-items:center;justify-content:center; }
+  .lg-role { width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:800; }
+  .lg-pass { font-size:10px;font-weight:800;color:var(--green); }
+  .lg-fail { font-size:10px;font-weight:800;color:var(--red); }
+  .lg-warn { font-size:10px;font-weight:800;color:var(--yellow); }
+
+  /* ============ DAG SPINE ============ */
+  .dag { display:flex; flex-direction:column; align-items:center; gap:0; }
+  .spine { width:3px; height:18px; background:linear-gradient(180deg,var(--border),rgba(59,130,246,0.4)); }
+
+  /* ============ MILESTONE ============ */
+  .milestone {
+    display:inline-flex; align-items:center; padding:8px 28px; border-radius:20px;
+    font-size:12px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; color:#fff;
+    position:relative;
+  }
+  .ms-i { background:linear-gradient(135deg,#1e40af,#3b82f6); box-shadow:0 0 20px rgba(59,130,246,0.35); }
+  .ms-c { background:linear-gradient(135deg,#166534,#22c55e); box-shadow:0 0 20px rgba(34,197,94,0.35); }
+  .ms-s { background:linear-gradient(135deg,#9a3412,#f97316); box-shadow:0 0 20px rgba(249,115,22,0.35); }
+  .ms-d { background:linear-gradient(135deg,#581c87,#a855f7); box-shadow:0 0 20px rgba(168,85,247,0.35); }
+  .ms-se { background:linear-gradient(135deg,#115e59,#14b8a6); box-shadow:0 0 20px rgba(20,184,166,0.35); }
+  .ms-cl { background:linear-gradient(135deg,#9d174d,#ec4899); box-shadow:0 0 20px rgba(236,72,153,0.35); }
+  .ms-flag {
+    position:absolute; top:-16px; right:-8px;
+    font-size:7.5px; font-weight:700; padding:2px 6px; border-radius:3px;
+    background:var(--yellow); color:#000; font-family:'JetBrains Mono',monospace;
+  }
+
+  /* ============ SECTION LABEL ============ */
+  .section-label {
+    text-align:center; font-size:10px; font-weight:700; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:2px; padding:3px 0;
+  }
+
+  /* ============ FORK / JOIN ============ */
+  .fj-row { display:flex; align-items:center; justify-content:center; gap:10px; }
+  .fj-bar {
+    width:300px; height:6px; border-radius:3px;
+    background:var(--yellow); opacity:0.7;
+  }
+  .fj-label-txt { font-size:9px; font-weight:700; color:var(--yellow); text-transform:uppercase; letter-spacing:0.5px; }
+  .fj-detail { font-size:8px; color:var(--text-muted); }
+
+  /* ============ PARALLEL CONTAINER ============ */
+  .parallel {
+    display:flex; gap:12px; justify-content:center; padding:8px 16px;
+    position:relative;
+  }
+  .parallel::before, .parallel::after {
+    content:''; position:absolute; left:50%; transform:translateX(-50%);
+    width:calc(100% - 60px); height:1px;
+    background:repeating-linear-gradient(90deg,var(--yellow) 0,var(--yellow) 5px,transparent 5px,transparent 10px);
+    opacity:0.25;
+  }
+  .parallel::before { top:0; }
+  .parallel::after { bottom:0; }
+
+  /* ============ SUBFLOW (Document Workflow) ============ */
+  .sf {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:14px; min-width:300px; max-width:480px; flex:1;
+  }
+  .sf-wide { min-width:560px; max-width:800px; }
+  .sf-hdr {
+    display:flex; align-items:center; gap:8px; margin-bottom:10px;
+    padding-bottom:8px; border-bottom:1px solid var(--border);
+  }
+  .sf-n {
+    width:24px;height:24px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;font-size:10px;font-weight:800;color:#fff;flex-shrink:0;
+  }
+  .sf-a { font-size:15px; font-weight:800; letter-spacing:-0.3px; }
+  .sf-nm { font-size:9px; color:var(--text-dim); }
+  .sf-opt {
+    font-size:7px; font-weight:700; padding:2px 5px; border-radius:3px;
+    background:rgba(234,179,8,0.15); color:var(--yellow); margin-left:auto;
+    text-transform:uppercase; letter-spacing:0.5px;
+  }
+
+  /* ============ FLOW NODES ============ */
+  .fs { display:flex; flex-direction:column; gap:4px; }
+  .fr { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+  .fc { display:flex; justify-content:center; padding:0 0 0 10px; }
+  .fv { width:2px; height:5px; background:var(--border); }
+  .fv-long { height:8px; }
+
+  /* --- State Node (rounded pill) --- */
+  .st {
+    display:inline-flex; align-items:center; padding:4px 9px; border-radius:14px;
+    font-size:8.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;
+    white-space:nowrap;
+    background:rgba(255,255,255,0.05); border:1.5px solid rgba(255,255,255,0.1); color:var(--text-dim);
+  }
+  .st-s { background:var(--blue-bg); border-color:rgba(59,130,246,0.3); color:var(--blue); } /* start */
+  .st-k { background:var(--yellow-bg); border-color:rgba(234,179,8,0.3); color:var(--yellow); } /* key */
+  .st-t { background:var(--green-bg); border-color:rgba(34,197,94,0.3); color:var(--green); } /* terminal */
+
+  /* --- User Task (rectangle, amber, hand icon) --- */
+  .ut {
+    display:inline-flex; align-items:center; gap:4px; padding:5px 10px;
+    background:rgba(245,158,11,0.12); border:1.5px solid rgba(245,158,11,0.35);
+    border-radius:3px; font-size:8.5px; font-weight:600; color:#f59e0b; white-space:nowrap;
+  }
+  .ut::before { content:'\u270B'; font-size:7px; }
+
+  /* --- System Action (rectangle, cyan, gear icon) --- */
+  .sa {
+    display:inline-flex; align-items:center; gap:4px; padding:5px 10px;
+    background:var(--cyan-bg); border:1.5px solid rgba(6,182,212,0.3);
+    border-radius:3px; font-size:8.5px; font-weight:600; color:var(--cyan); white-space:nowrap;
+  }
+  .sa::before { content:'\u2699'; font-size:8px; }
+
+  /* --- Decision Diamond (validation / cross-check) --- */
+  .decision {
+    display:flex; flex-direction:column; gap:3px;
+    margin: 4px 0;
+    padding: 0 0 0 6px;
+    border-left: 3px solid var(--red);
+  }
+  .decision-hdr {
+    display:flex; align-items:center; gap:5px;
+  }
+  .d-diamond {
+    width:18px; height:18px; flex-shrink:0;
+    background:var(--red-bg); border:2px solid rgba(239,68,68,0.5);
+    transform:rotate(45deg); border-radius:2px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .d-diamond span { transform:rotate(-45deg); font-size:7px; font-weight:800; color:var(--red); }
+  .d-diamond-soft {
+    background:var(--yellow-bg); border-color:rgba(234,179,8,0.5);
+  }
+  .d-diamond-soft span { color:var(--yellow); }
+  .decision-soft { border-left-color:var(--yellow); }
+  .d-label {
+    font-size:8.5px; font-weight:700; color:var(--text);
+  }
+  .d-rule {
+    font-size:7.5px; font-family:'JetBrains Mono',monospace; color:var(--text-muted);
+    padding:1px 6px; background:rgba(255,255,255,0.03); border-radius:3px;
+    display:inline-block;
+  }
+  .d-xref {
+    font-size:7px; font-weight:700; padding:1px 5px; border-radius:3px;
+    background:rgba(168,85,247,0.15); color:var(--purple);
+    display:inline-flex; align-items:center; gap:2px;
+  }
+  .d-xref::before { content:'vs'; font-size:6px; opacity:0.7; }
+  .d-outcomes {
+    display:flex; gap:10px; padding-left:24px;
+  }
+  .d-pass {
+    display:inline-flex; align-items:center; gap:3px;
+    font-size:8px; font-weight:700; color:var(--green);
+  }
+  .d-pass::before { content:'\u2713'; font-weight:900; }
+  .d-fail {
+    display:inline-flex; align-items:center; gap:3px;
+    font-size:8px; font-weight:700; color:var(--red);
+  }
+  .d-fail::before { content:'\u2717'; font-weight:900; }
+  .d-warn {
+    display:inline-flex; align-items:center; gap:3px;
+    font-size:8px; font-weight:700; color:var(--yellow);
+  }
+  .d-warn::before { content:'\u26A0'; font-weight:900; font-size:7px; }
+
+  /* --- Role badge --- */
+  .rb {
+    width:15px;height:15px;border-radius:50%;display:inline-flex;align-items:center;
+    justify-content:center;font-size:7.5px;font-weight:800;color:#fff;flex-shrink:0;
+  }
+  .rb-a{background:var(--blue);} .rb-b{background:var(--red);} .rb-c{background:var(--purple);}
+  .rb-d{background:var(--orange);} .rb-s{background:var(--teal);}
+
+  /* --- Event tag --- */
+  .ev {
+    font-size:6.5px; font-weight:700; font-family:'JetBrains Mono',monospace;
+    padding:1px 4px; border-radius:2px;
+    background:rgba(168,85,247,0.12); color:var(--purple);
+  }
+
+  /* --- Arrow --- */
+  .ar { font-size:9px; color:var(--text-muted); flex-shrink:0; }
+
+  /* --- Transition hint --- */
+  .th { font-size:7px; color:var(--text-muted); font-style:italic; }
+
+  /* --- Return branch --- */
+  .ret {
+    display:inline-flex; align-items:center; gap:3px;
+    font-size:7.5px; color:var(--red); padding:2px 6px;
+    background:rgba(239,68,68,0.06); border:1px dashed rgba(239,68,68,0.25); border-radius:3px;
+    margin-left:22px;
+  }
+
+  /* --- Info callout --- */
+  .info {
+    margin:4px 0; padding:6px 8px; border-radius:5px; font-size:8px; line-height:1.5;
+    border:1px dashed;
+  }
+  .info-ucp { background:var(--green-bg); border-color:rgba(34,197,94,0.25); color:var(--green); }
+  .info-edpms { background:var(--pink-bg); border-color:rgba(236,72,153,0.25); color:var(--pink); }
+
+  /* ============ FOOTER ============ */
+  .footer-grid {
+    width:100%; max-width:1200px;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:16px 24px; display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px;
+  }
+  .fg-title { font-size:11px; font-weight:800; margin-bottom:6px; }
+  .fg-list { font-size:9px; color:var(--text-dim); line-height:1.7; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>CBOS End-to-End Trade Workflow DAG</h1>
+  <p>Flowchart with Decision Nodes for Validations &amp; Cross-Document Checks &bull; Fork-Join Parallelism &bull; User Tasks vs System Actions</p>
+</div>
+
+<!-- LEGEND -->
+<div class="legend">
+  <div class="legend-item"><div class="lg-state"></div>Document State</div>
+  <div class="legend-item"><div class="lg-action"></div>User Task (human)</div>
+  <div class="legend-item"><div class="lg-sys"></div>System Action (auto)</div>
+  <div class="legend-item"><div class="lg-decision"></div>Validation / Decision</div>
+  <div class="legend-item"><div class="lg-fork"></div>Fork / Join</div>
+  <div class="legend-item"><div class="lg-ms"></div>Trade Milestone</div>
+  <div class="legend-item"><span class="lg-pass">&#10003; PASS</span></div>
+  <div class="legend-item"><span class="lg-fail">&#10007; FAIL(400)</span></div>
+  <div class="legend-item"><span class="lg-warn">&#9888; WARN(200)</span></div>
+  <div class="legend-item"><div class="lg-role" style="background:var(--blue)">A</div>Exporter</div>
+  <div class="legend-item"><div class="lg-role" style="background:var(--red)">B</div>Importer</div>
+  <div class="legend-item"><div class="lg-role" style="background:var(--purple)">C</div>AD Bank</div>
+  <div class="legend-item"><div class="lg-role" style="background:var(--orange)">D</div>Forwarder</div>
+  <div class="legend-item"><div class="lg-role" style="background:var(--teal)">S</div>System</div>
+</div>
+
+<!-- ================================================================ -->
+<div class="dag">
+
+<!-- TRADE INITIATED -->
+<div class="milestone ms-i">TRADE INITIATED</div>
+<div class="spine"></div>
+<div class="section-label">Phase 1 &mdash; Negotiation</div>
+<div class="spine"></div>
+
+<!-- FORK 1 -->
+<div class="fj-row">
+  <span class="fj-label-txt">FORK</span>
+  <div class="fj-bar"></div>
+  <span class="fj-detail">PI &amp; PO proceed in parallel</span>
+</div>
+<div class="spine" style="height:6px"></div>
+
+<div class="parallel">
+
+<!-- ==================== PI SUBFLOW ==================== -->
+<div class="sf">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--blue)">1</div>
+    <div><div class="sf-a" style="color:var(--blue)">PI</div><div class="sf-nm">Proforma Invoice</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="st st-s">DRAFT</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Create PI</span><span class="ev">PI_CREATED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: PI fields -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate PI Fields</span>
+      </div>
+      <div class="d-rule">mandatory fields present &amp;&amp; currency &#8712; ISO_4217</div>
+      <div class="d-outcomes">
+        <span class="d-pass">transition to approval</span>
+        <span class="d-fail">400 ERR_VAL &mdash; block, return field errors</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Approve PI</span><span class="ev">PI_APPROVED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: PI totals -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate PI Totals &amp; Dates</span>
+      </div>
+      <div class="d-rule">total == sum(line_items.amount) &amp;&amp; validity_date > today</div>
+      <div class="d-outcomes">
+        <span class="d-pass">&#8594; EXPORTER_APPROVED</span>
+        <span class="d-fail">400 &mdash; totals mismatch / expired date</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st">EXPORTER_APPROVED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Share to Importer</span><span class="ar">&rarr;</span><span class="st">SHARED</span><span class="ev">PI_SHARED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-b">B</span><span class="ut">Accept or Return PI</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- DECISION: B accept/return -->
+    <div class="decision decision-soft">
+      <div class="decision-hdr">
+        <div class="d-diamond d-diamond-soft"><span>?</span></div>
+        <span class="d-label">Importer Review</span>
+        <span class="d-xref">market avg</span>
+      </div>
+      <div class="d-rule">unit_price vs market average (soft)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">ACCEPTED &mdash; B accepts</span>
+        <span class="d-warn">200 + warnings[] &mdash; proceed with flag</span>
+      </div>
+    </div>
+    <div class="ret">&circlearrowleft; B returns &rarr; RETURNED_FOR_REVISION &rarr; A revises &rarr; DRAFT</div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st st-k">COUNTERPARTY_ACCEPTED</span><span class="ev">PI_ACCEPTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Auto-convert PI &rarr; CI Draft</span><span class="ev">PI_CONVERTED_TO_CI</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="st st-t">CLOSED</span></div>
+  </div>
+</div>
+
+<!-- ==================== PO SUBFLOW ==================== -->
+<div class="sf">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--blue)">2</div>
+    <div><div class="sf-a" style="color:var(--blue)">PO</div><div class="sf-nm">Purchase Order / Sales Contract</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="st st-s">DRAFT</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-b">B</span><span class="ut">Create PO/Contract</span><span class="ev">MASTER_TERMS_CREATED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: PO fields -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate PO Fields</span>
+      </div>
+      <div class="d-rule">incoterms &#8712; ENUM &amp;&amp; payment_terms &#8712; ENUM &amp;&amp; qty > 0 &amp;&amp; price >= 0</div>
+      <div class="d-outcomes">
+        <span class="d-pass">valid master terms</span>
+        <span class="d-fail">400 &mdash; invalid enum / negative values</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Accept or Return terms</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- CROSS-CHECK: PO vs PI -->
+    <div class="decision decision-soft">
+      <div class="decision-hdr">
+        <div class="d-diamond d-diamond-soft"><span>X</span></div>
+        <span class="d-label">Cross-Check: PO items align with PI</span>
+        <span class="d-xref">PI</span>
+      </div>
+      <div class="d-rule">PO.items ~ PI.line_items (description, qty range)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">items aligned</span>
+        <span class="d-warn">200 + warnings[] &mdash; mismatch logged</span>
+      </div>
+    </div>
+    <div class="ret">&circlearrowleft; Counterparty returns &rarr; RETURNED &rarr; revise &rarr; DRAFT</div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st st-k">COUNTERPARTY_ACCEPTED</span><span class="ev">MASTER_TERMS_ACCEPTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Lock &amp; Link to trade</span><span class="ar">&rarr;</span><span class="st">LINKED</span><span class="ev">MASTER_TERMS_LINKED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Close at trade completion</span><span class="ar">&rarr;</span><span class="st st-t">CLOSED</span></div>
+  </div>
+</div>
+</div><!-- /parallel -->
+
+<div class="spine" style="height:6px"></div>
+<div class="fj-row">
+  <span class="fj-detail">await: PI.ACCEPTED &amp; PO.ACCEPTED</span>
+  <div class="fj-bar"></div>
+  <span class="fj-label-txt">JOIN</span>
+</div>
+<div class="spine"></div>
+
+<!-- TRADE CONTRACTED -->
+<div class="milestone ms-c">TRADE &rarr; CONTRACTED<span class="ms-flag">is_pi_confirmed = true</span></div>
+<div class="spine"></div>
+<div class="section-label">Phase 2 &mdash; Contracting (Optional)</div>
+<div class="spine"></div>
+
+<!-- ==================== LC SUBFLOW ==================== -->
+<div class="sf sf-wide" style="margin:0 auto">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--green)">3</div>
+    <div><div class="sf-a" style="color:var(--green)">LC</div><div class="sf-nm">Letter of Credit</div></div>
+    <span class="sf-opt">Optional</span>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="rb rb-b">B</span><span class="ut">Request LC (amount, currency, required_docs[])</span><span class="ar">&rarr;</span><span class="st st-s">REQUESTED</span><span class="ev">LC_REQUESTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-c">C</span><span class="ut">Issue LC</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: LC issuance -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate LC Issuance</span>
+      </div>
+      <div class="d-rule">SWIFT MT700 format valid &amp;&amp; expiry_date >= issue_date &amp;&amp; amount > 0</div>
+      <div class="d-outcomes">
+        <span class="d-pass">&#8594; ISSUED / ADVISED</span>
+        <span class="d-fail">400 &mdash; invalid format / dates</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st">ISSUED / ADVISED</span><span class="ev">LC_ADVISED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Accept LC or Request Amendment</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- CROSS-CHECK: LC vs Master Terms -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>X</span></div>
+        <span class="d-label">Cross-Check: LC vs Master Terms</span>
+        <span class="d-xref">PO</span>
+      </div>
+      <div class="d-rule">LC.amount/currency match PO.terms within tolerance (default 5%)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">&#8594; ACCEPTED</span>
+        <span class="d-fail">400 &mdash; amount/currency mismatch beyond tolerance</span>
+      </div>
+    </div>
+    <div class="ret">&circlearrowleft; A requests amendment &rarr; AMENDMENT_REQUESTED &rarr; C re-issues</div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st st-k">ACCEPTED</span><span class="ev">LC_ACCEPTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Capture LC conditions as structured rules</span><span class="ar">&rarr;</span><span class="st">RULES_LINKED</span><span class="ev">LC_RULES_LINKED</span></div>
+    <div class="info info-ucp"><strong>UCP 600 Rules Engine activated:</strong> required_docs[] checklist created &bull; Art 14-22 examination rules loaded &bull; Tolerance +/-5% (Art 30) &bull; Discrepancy workflow: flag &rarr; cure / waive / reject</div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Present docs through bank</span><span class="ar">&rarr;</span><span class="st">DOCS_PRESENTED</span><span class="ev">LC_DOCS_PRESENTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Settlement completes</span><span class="ar">&rarr;</span><span class="st st-t">CLOSED</span><span class="ev">LC_CLOSED</span></div>
+  </div>
+</div>
+
+<div class="spine"></div>
+<div class="section-label">Phase 3 &mdash; Pre-Shipment</div>
+<div class="spine"></div>
+
+<!-- ==================== CI SUBFLOW ==================== -->
+<div class="sf sf-wide" style="margin:0 auto">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--orange)">4</div>
+    <div><div class="sf-a" style="color:var(--orange)">CI</div><div class="sf-nm">Commercial Invoice (converted from PI)</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="st st-s">DRAFT</span><span class="th">(auto-created from PI conversion)</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Create / Edit CI</span><span class="ev">CI_CREATED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: CI mandatory fields -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate CI Mandatory Fields</span>
+      </div>
+      <div class="d-rule">all mandatory fields present &amp;&amp; totals.total == sum(line_items.amount)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">fields valid</span>
+        <span class="d-fail">400 ERR_VAL &mdash; missing fields / total mismatch</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Approve CI</span><span class="ev">CI_APPROVED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- CROSS-CHECK: CI buyer = PO buyer -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>X</span></div>
+        <span class="d-label">Cross-Check: CI buyer vs PO buyer</span>
+        <span class="d-xref">PO</span>
+      </div>
+      <div class="d-rule">CI.buyer.name == PO.party_b.name (exact match)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">buyer identity confirmed</span>
+        <span class="d-fail">400 &mdash; buyer name mismatch</span>
+      </div>
+    </div>
+
+    <!-- CROSS-CHECK: CI total vs PI total -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>X</span></div>
+        <span class="d-label">Cross-Check: CI total vs PI total</span>
+        <span class="d-xref">PI</span>
+      </div>
+      <div class="d-rule">CI.total_value &le; PI.total_value * 1.10</div>
+      <div class="d-outcomes">
+        <span class="d-pass">within 10% tolerance</span>
+        <span class="d-fail">400 &mdash; CI exceeds PI by &gt;10%</span>
+      </div>
+    </div>
+
+    <!-- CROSS-CHECK: CI vs LC (conditional) -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>X</span></div>
+        <span class="d-label">Cross-Check: CI vs LC rules (if LC present)</span>
+        <span class="d-xref">LC</span>
+      </div>
+      <div class="d-rule">CI.amount &le; LC.amount * (1 + tolerance%) &amp;&amp; CI.date &le; LC.expiry_date</div>
+      <div class="d-outcomes">
+        <span class="d-pass">LC compliant</span>
+        <span class="d-fail">400 &mdash; LC amount/date violation</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st">APPROVED</span><span class="ar">&rarr;</span><span class="rb rb-a">A</span><span class="ut">Share to B, D, bank</span><span class="ar">&rarr;</span><span class="st">SHARED</span><span class="ev">CI_SHARED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-b">B</span><span class="ut">Accept or Return CI</span></div>
+    <div class="ret">&circlearrowleft; B returns &rarr; RETURNED &rarr; A revises &rarr; DRAFT</div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st st-k">ACCEPTED</span><span class="ev">CI_ACCEPTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-c">C</span><span class="ut">Bank review (if LC)</span><span class="ar">&rarr;</span><span class="st">SUBMITTED_TO_BANK</span><span class="ev">CI_SUBMITTED_TO_BANK</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Link to shipment + regulatory refs</span><span class="ar">&rarr;</span><span class="st">LINKED</span><span class="ev">CI_LINKED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Emit payment readiness signal</span><span class="ar">&rarr;</span><span class="st st-k">PAYMENT_READY</span><span class="ev">CI_PAYMENT_READY_SIGNAL</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Payment received</span><span class="ar">&rarr;</span><span class="st st-t">CLOSED</span></div>
+  </div>
+</div>
+
+<div class="spine"></div>
+
+<!-- FORK 2: PL + SI -->
+<div class="fj-row">
+  <span class="fj-label-txt">FORK</span>
+  <div class="fj-bar"></div>
+  <span class="fj-detail">CI.ACCEPTED unlocks &mdash; PL &amp; SI in parallel</span>
+</div>
+<div class="spine" style="height:6px"></div>
+
+<div class="parallel">
+
+<!-- ==================== PL SUBFLOW ==================== -->
+<div class="sf">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--orange)">5</div>
+    <div><div class="sf-a" style="color:var(--orange)">PL</div><div class="sf-nm">Packing List</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="st st-s">DRAFT</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Create PL</span><span class="ev">PL_CREATED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: PL fields -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate PL Fields</span>
+      </div>
+      <div class="d-rule">weights > 0 &amp;&amp; package_count > 0</div>
+      <div class="d-outcomes">
+        <span class="d-pass">valid packaging data</span>
+        <span class="d-fail">400 &mdash; zero/negative values</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Approve PL</span><span class="ar">&rarr;</span><span class="st">APPROVED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- CROSS-CHECK: PL qty vs CI -->
+    <div class="decision decision-soft">
+      <div class="decision-hdr">
+        <div class="d-diamond d-diamond-soft"><span>X</span></div>
+        <span class="d-label">Cross-Check: PL qty vs CI line items</span>
+        <span class="d-xref">CI</span>
+      </div>
+      <div class="d-rule">sum(PL.packages.qty) ~ CI.line_items.qty</div>
+      <div class="d-outcomes">
+        <span class="d-pass">quantities aligned</span>
+        <span class="d-warn">200 + warnings[] &mdash; qty mismatch flagged</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Share to D and B</span><span class="ar">&rarr;</span><span class="st">SHARED</span><span class="ev">PL_SHARED</span></div>
+    <div class="ret">&circlearrowleft; D returns &rarr; RETURNED &rarr; A revises</div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Link to BL/AWB</span><span class="ar">&rarr;</span><span class="st">LINKED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="st st-t">CLOSED</span></div>
+  </div>
+</div>
+
+<!-- ==================== SI SUBFLOW ==================== -->
+<div class="sf">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--orange)">6</div>
+    <div><div class="sf-a" style="color:var(--orange)">SI</div><div class="sf-nm">Shipping Instructions</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="st st-s">DRAFT</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Create SI</span><span class="ev">SI_CREATED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: SI fields -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate SI Fields</span>
+      </div>
+      <div class="d-rule">ports &#8712; supported_codes &amp;&amp; freight_terms &#8712; {prepaid, collect}</div>
+      <div class="d-outcomes">
+        <span class="d-pass">valid shipping data</span>
+        <span class="d-fail">400 &mdash; unsupported port / invalid terms</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Approve &amp; Submit to D</span><span class="ar">&rarr;</span><span class="st">SUBMITTED</span><span class="ev">SI_SUBMITTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-d">D</span><span class="ut">Accept SI</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- CROSS-CHECK: SI consignee vs LC -->
+    <div class="decision decision-soft">
+      <div class="decision-hdr">
+        <div class="d-diamond d-diamond-soft"><span>X</span></div>
+        <span class="d-label">Cross-Check: SI consignee vs LC beneficiary</span>
+        <span class="d-xref">LC</span>
+      </div>
+      <div class="d-rule">SI.consignee ~ LC.beneficiary (fuzzy)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">consignee aligned</span>
+        <span class="d-warn">200 + warnings[] &mdash; name mismatch flagged</span>
+      </div>
+    </div>
+    <div class="ret">&circlearrowleft; D returns &rarr; RETURNED &rarr; A revises</div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st st-k">ACCEPTED</span><span class="ev">SI_ACCEPTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">BL/AWB issued &rarr; Link SI</span><span class="ar">&rarr;</span><span class="st">LINKED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="st st-t">CLOSED</span></div>
+  </div>
+</div>
+</div><!-- /parallel -->
+
+<div class="spine" style="height:6px"></div>
+<div class="fj-row">
+  <span class="fj-detail">await: PL.SHARED &amp; SI.ACCEPTED</span>
+  <div class="fj-bar"></div>
+  <span class="fj-label-txt">JOIN</span>
+</div>
+<div class="spine"></div>
+<div class="section-label">Phase 4 &mdash; Shipment &amp; Logistics</div>
+<div class="spine"></div>
+
+<!-- FORK 3: BL + COO + EXD -->
+<div class="fj-row">
+  <span class="fj-label-txt">FORK</span>
+  <div class="fj-bar"></div>
+  <span class="fj-detail">BL/AWB, COO &amp; Export Decl &mdash; 3-way parallel</span>
+</div>
+<div class="spine" style="height:6px"></div>
+
+<div class="parallel">
+
+<!-- ==================== BL/AWB SUBFLOW ==================== -->
+<div class="sf">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--purple)">7</div>
+    <div><div class="sf-a" style="color:var(--purple)">BL/AWB</div><div class="sf-nm">Bill of Lading / Air Waybill</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="rb rb-d">D</span><span class="ut">Issue BL/AWB (external)</span><span class="th">outside CBOS</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Upload BL/AWB to CBOS</span><span class="ar">&rarr;</span><span class="st st-s">RECEIVED</span><span class="ev">BL_AWB_RECEIVED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: BL number format -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate BL/AWB Format</span>
+      </div>
+      <div class="d-rule">transport_number format present &amp;&amp; transport_type &#8712; {BL, AWB}</div>
+      <div class="d-outcomes">
+        <span class="d-pass">format valid</span>
+        <span class="d-fail">400 &mdash; missing/invalid number</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- CROSS-CHECK: BL ports vs SI (HARD) -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>X</span></div>
+        <span class="d-label">Cross-Check: BL ports vs SI ports</span>
+        <span class="d-xref">SI</span>
+      </div>
+      <div class="d-rule">BL.origin_port == SI.origin_port &amp;&amp; BL.dest_port == SI.dest_port</div>
+      <div class="d-outcomes">
+        <span class="d-pass">ports match (exact)</span>
+        <span class="d-fail">400 &mdash; port mismatch &rarr; EXCEPTION</span>
+      </div>
+    </div>
+
+    <!-- CROSS-CHECK: BL weight vs PL (SOFT) -->
+    <div class="decision decision-soft">
+      <div class="decision-hdr">
+        <div class="d-diamond d-diamond-soft"><span>X</span></div>
+        <span class="d-label">Cross-Check: BL gross weight vs PL</span>
+        <span class="d-xref">PL</span>
+      </div>
+      <div class="d-rule">|BL.gross_weight - PL.total_weight| / PL.total_weight &lt; 0.05</div>
+      <div class="d-outcomes">
+        <span class="d-pass">weight within 5%</span>
+        <span class="d-warn">200 + warnings[] &mdash; variance &gt;5%</span>
+      </div>
+    </div>
+
+    <!-- CROSS-CHECK: BL departure vs LC (SOFT) -->
+    <div class="decision decision-soft">
+      <div class="decision-hdr">
+        <div class="d-diamond d-diamond-soft"><span>X</span></div>
+        <span class="d-label">Cross-Check: BL departure vs LC latest shipment</span>
+        <span class="d-xref">LC</span>
+      </div>
+      <div class="d-rule">BL.departure_date &le; LC.latest_shipment_date</div>
+      <div class="d-outcomes">
+        <span class="d-pass">within LC window</span>
+        <span class="d-warn">200 + warnings[] &mdash; late shipment flag</span>
+      </div>
+    </div>
+    <div class="ret">&circlearrowleft; Hard validation fails &rarr; EXCEPTION &rarr; A re-uploads corrected BL</div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st st-k">VALIDATED</span><span class="ev">BL_AWB_VALIDATED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Share to B and C</span><span class="ar">&rarr;</span><span class="st">SHARED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-b">B</span><span class="ut">Confirm delivery</span><span class="ar">&rarr;</span><span class="st">DELIVERED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="st st-t">CLOSED</span></div>
+  </div>
+</div>
+
+<!-- ==================== COO SUBFLOW ==================== -->
+<div class="sf">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--purple)">8</div>
+    <div><div class="sf-a" style="color:var(--purple)">COO</div><div class="sf-nm">Certificate of Origin</div></div>
+    <span class="sf-opt">Lane Dependent</span>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Request COO</span><span class="ar">&rarr;</span><span class="st st-s">REQUESTED</span><span class="ev">COO_REQUESTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="th">Issuer issues COO (external)</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Upload COO to CBOS</span><span class="ar">&rarr;</span><span class="st">RECEIVED</span><span class="ev">COO_RECEIVED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: COO fields -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate COO Fields</span>
+      </div>
+      <div class="d-rule">issue_date present &amp;&amp; origin_country &amp;&amp; destination_country present</div>
+      <div class="d-outcomes">
+        <span class="d-pass">fields valid</span>
+        <span class="d-fail">400 &mdash; missing date/country</span>
+      </div>
+    </div>
+
+    <!-- CROSS-CHECK: COO goods vs CI (SOFT) -->
+    <div class="decision decision-soft">
+      <div class="decision-hdr">
+        <div class="d-diamond d-diamond-soft"><span>X</span></div>
+        <span class="d-label">Cross-Check: COO goods vs CI goods</span>
+        <span class="d-xref">CI</span>
+      </div>
+      <div class="d-rule">COO.goods_description ~ CI.line_items.description (fuzzy match)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">descriptions aligned</span>
+        <span class="d-warn">200 + warnings[] &mdash; description mismatch</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Share to B and D</span><span class="ar">&rarr;</span><span class="st">SHARED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Link to trade</span><span class="ar">&rarr;</span><span class="st">LINKED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="st st-t">CLOSED</span></div>
+  </div>
+</div>
+
+<!-- ==================== EXD SUBFLOW ==================== -->
+<div class="sf">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--purple)">9</div>
+    <div><div class="sf-a" style="color:var(--purple)">EXD</div><div class="sf-nm">Export Declaration / Shipping Bill</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="st st-s">DRAFT</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-d">D</span><span class="ut">Prepare filing from CI/PL</span><span class="ev">EX_DECL_CREATED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: EXD port code -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate Export Decl Fields</span>
+      </div>
+      <div class="d-rule">port_code present &amp;&amp; IEC format valid (if captured)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">filing data valid</span>
+        <span class="d-fail">400 &mdash; missing port / bad IEC</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Approve pack</span><span class="ar">&rarr;</span><span class="st">APPROVED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- CROSS-CHECK: EXD totals vs CI -->
+    <div class="decision decision-soft">
+      <div class="decision-hdr">
+        <div class="d-diamond d-diamond-soft"><span>X</span></div>
+        <span class="d-label">Cross-Check: Declaration totals vs CI</span>
+        <span class="d-xref">CI</span>
+      </div>
+      <div class="d-rule">EXD.totals ~ CI.totals (reasonable match)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">totals aligned</span>
+        <span class="d-warn">200 + warnings[] &mdash; value mismatch</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-d">D</span><span class="ut">Submit to customs</span><span class="ar">&rarr;</span><span class="st">SUBMITTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Customs clears, LEO issued</span><span class="ar">&rarr;</span><span class="st st-k">CLEARED</span><span class="ev">EX_DECL_CLEARED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Link refs to trade</span><span class="ar">&rarr;</span><span class="st">LINKED</span></div>
+    <div class="info info-edpms"><strong>EDPMS:</strong> 9-month closure deadline starts at CLEARED &bull; System schedules alerts at 6mo &amp; 8mo</div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="st st-t">CLOSED</span><span class="th">(closed by FIRC linkage)</span></div>
+  </div>
+</div>
+</div><!-- /parallel -->
+
+<div class="spine" style="height:6px"></div>
+<div class="fj-row">
+  <span class="fj-detail">await: BL.VALIDATED &amp; COO.LINKED &amp; EXD.CLEARED</span>
+  <div class="fj-bar"></div>
+  <span class="fj-label-txt">JOIN</span>
+</div>
+<div class="spine"></div>
+
+<!-- TRADE SHIPPED -->
+<div class="milestone ms-s">TRADE &rarr; SHIPPED<span class="ms-flag">is_shipment_verified = true</span></div>
+<div class="spine"></div>
+<div class="section-label">Phase 5 &mdash; Import &amp; Clearance</div>
+<div class="spine"></div>
+
+<!-- ==================== IMD SUBFLOW ==================== -->
+<div class="sf sf-wide" style="margin:0 auto">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--teal)">10</div>
+    <div><div class="sf-a" style="color:var(--teal)">IMD</div><div class="sf-nm">Import Declaration / Bill of Entry</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="st st-s">DRAFT</span><span class="th">(requires: BL/AWB + CI + COO + PL)</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-b">B</span><span class="ut">Prepare filing using BL/AWB, CI, COO</span><span class="ev">IM_DECL_CREATED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-d">D</span><span class="ut">Submit to destination customs</span><span class="ar">&rarr;</span><span class="st">SUBMITTED</span><span class="ev">IM_DECL_SUBMITTED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: Clearance proof -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate Clearance Proof</span>
+      </div>
+      <div class="d-rule">clearance_proof attachment required (PDF/image)</div>
+      <div class="d-outcomes">
+        <span class="d-pass">&#8594; CLEARED</span>
+        <span class="d-fail">400 &mdash; missing clearance proof attachment</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Customs clears</span><span class="ar">&rarr;</span><span class="st st-k">CLEARED</span><span class="ev">IM_DECL_CLEARED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- CROSS-CHECK: IMD importer vs master terms -->
+    <div class="decision decision-soft">
+      <div class="decision-hdr">
+        <div class="d-diamond d-diamond-soft"><span>X</span></div>
+        <span class="d-label">Cross-Check: Importer name vs master terms</span>
+        <span class="d-xref">PO</span>
+      </div>
+      <div class="d-rule">IMD.importer_name ~ PO.party_b.name</div>
+      <div class="d-outcomes">
+        <span class="d-pass">identity confirmed</span>
+        <span class="d-warn">200 + warnings[] &mdash; name mismatch flagged</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Link proof &amp; update milestone</span><span class="ar">&rarr;</span><span class="st">LINKED</span><span class="ar">&rarr;</span><span class="st st-t">CLOSED</span></div>
+  </div>
+</div>
+
+<div class="spine"></div>
+<div class="milestone ms-d">TRADE &rarr; DOCS_PRESENTED</div>
+<div class="spine"></div>
+<div class="section-label">Phase 6 &mdash; Settlement &amp; Closure</div>
+<div class="spine"></div>
+
+<!-- ==================== PA SUBFLOW ==================== -->
+<div class="sf sf-wide" style="margin:0 auto">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--pink)">11</div>
+    <div><div class="sf-a" style="color:var(--pink)">PA</div><div class="sf-nm">Payment Advice / Bank Credit Confirmation</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="rb rb-c">C</span><span class="ut">Execute payment (external)</span><span class="th">outside CBOS</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-c">C</span><span class="ut">Issue payment advice</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: PA fields -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate PA Fields</span>
+      </div>
+      <div class="d-rule">amount > 0 &amp;&amp; currency &#8712; ISO_4217 &amp;&amp; bank_ref unique for trade</div>
+      <div class="d-outcomes">
+        <span class="d-pass">&#8594; RECEIVED</span>
+        <span class="d-fail">400 &mdash; duplicate ref / missing fields</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st st-s">RECEIVED</span><span class="ev">PAYMENT_ADVICE_RECEIVED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Confirm payment advice in CBOS</span><span class="ar">&rarr;</span><span class="st">CONFIRMED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- CROSS-CHECK: PA amount vs CI -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>X</span></div>
+        <span class="d-label">Cross-Check: PA amount/currency vs CI</span>
+        <span class="d-xref">CI</span>
+      </div>
+      <div class="d-rule">PA.amount ~ CI.total within tolerance &amp;&amp; PA.currency == CI.currency</div>
+      <div class="d-outcomes">
+        <span class="d-pass">&#8594; RECONCILED</span>
+        <span class="d-fail">400 &mdash; amount/currency mismatch beyond tolerance</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Reconcile to CI/trade</span><span class="ar">&rarr;</span><span class="st st-k">RECONCILED</span><span class="ev">PAYMENT_ADVICE_RECONCILED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="st st-t">CLOSED</span></div>
+  </div>
+</div>
+
+<div class="spine"></div>
+<div class="milestone ms-se">TRADE &rarr; SETTLED<span class="ms-flag">is_payment_signalled = true</span></div>
+<div class="spine"></div>
+
+<!-- ==================== FIRC SUBFLOW ==================== -->
+<div class="sf sf-wide" style="margin:0 auto">
+  <div class="sf-hdr">
+    <div class="sf-n" style="background:var(--pink)">12</div>
+    <div><div class="sf-a" style="color:var(--pink)">FIRC</div><div class="sf-nm">Foreign Inward Remittance Certificate</div></div>
+  </div>
+  <div class="fs">
+    <div class="fr"><span class="rb rb-c">C</span><span class="ut">Issue FIRC (external)</span><span class="th">outside CBOS</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-a">A</span><span class="ut">Upload FIRC to CBOS</span></div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <!-- VALIDATE: FIRC fields -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>V</span></div>
+        <span class="d-label">Validate FIRC Fields</span>
+      </div>
+      <div class="d-rule">firc_issue_date present &amp;&amp; firc_number present</div>
+      <div class="d-outcomes">
+        <span class="d-pass">fields valid</span>
+        <span class="d-fail">400 &mdash; missing date/number</span>
+      </div>
+    </div>
+
+    <!-- CROSS-CHECK: FIRC amount vs PA/CI -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>X</span></div>
+        <span class="d-label">Cross-Check: FIRC amount vs PA &amp; CI</span>
+        <span class="d-xref">PA</span>
+        <span class="d-xref">CI</span>
+      </div>
+      <div class="d-rule">FIRC.amount ~ PA.amount ~ CI.total within tolerance &amp;&amp; FIRC.currency == CI.currency</div>
+      <div class="d-outcomes">
+        <span class="d-pass">amounts reconciled</span>
+        <span class="d-fail">400 &mdash; amount shortfall &rarr; flag for manual reconciliation</span>
+      </div>
+    </div>
+
+    <!-- CROSS-CHECK: FIRC purpose code vs EXD -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>X</span></div>
+        <span class="d-label">Cross-Check: FIRC purpose code vs Export Decl</span>
+        <span class="d-xref">EXD</span>
+      </div>
+      <div class="d-rule">FIRC.purpose_code (e.g. P0103) matches EXD regime</div>
+      <div class="d-outcomes">
+        <span class="d-pass">purpose aligned</span>
+        <span class="d-fail">400 &mdash; purpose code mismatch</span>
+      </div>
+    </div>
+
+    <!-- EDPMS: 9-month check -->
+    <div class="decision">
+      <div class="decision-hdr">
+        <div class="d-diamond"><span>T</span></div>
+        <span class="d-label">EDPMS: Shipping Bill Closure within 9 Months</span>
+        <span class="d-xref">EXD</span>
+      </div>
+      <div class="d-rule">FIRC.date - EXD.shipping_bill_date &lt; 270 days</div>
+      <div class="d-outcomes">
+        <span class="d-pass">within 9-month window &rarr; EDPMS compliant</span>
+        <span class="d-fail">ALERT &mdash; caution listing risk, escalate to admin</span>
+      </div>
+    </div>
+    <div class="fc"><div class="fv"></div></div>
+
+    <div class="fr"><span class="st st-s">RECEIVED</span><span class="ev">FIRC_RECEIVED</span></div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Map to trade/invoice &rarr; mark compliance closure</span><span class="ar">&rarr;</span><span class="st st-k">LINKED</span><span class="ev">FIRC_LINKED</span></div>
+    <div class="info info-edpms"><strong>EDPMS Closure Signal:</strong> FIRC linked &rarr; shipping bill closed in EDPMS &bull; FEMA realization complete &bull; Exporters' caution list cleared</div>
+    <div class="fc"><div class="fv"></div></div>
+    <div class="fr"><span class="rb rb-s">S</span><span class="sa">Close compliance</span><span class="ar">&rarr;</span><span class="st st-t">CLOSED</span><span class="ev">COMPLIANCE_CLOSED</span></div>
+  </div>
+</div>
+
+<div class="spine"></div>
+<div class="milestone ms-cl">TRADE &rarr; CLOSED</div>
+
+<div class="spine" style="height:24px"></div>
+
+<!-- FOOTER SUMMARY -->
+<div class="footer-grid">
+  <div>
+    <div class="fg-title" style="color:#f59e0b">User Tasks (&#9995; Human)</div>
+    <div class="fg-list">
+      &bull; Create / Edit documents<br>
+      &bull; Approve / Reject / Return<br>
+      &bull; Share to counterparties<br>
+      &bull; Accept terms &amp; documents<br>
+      &bull; Upload external docs (BL, COO, FIRC)<br>
+      &bull; Confirm payment advice<br>
+      &bull; Submit to customs / bank
+    </div>
+  </div>
+  <div>
+    <div class="fg-title" style="color:var(--cyan)">System Actions (&#9881; Auto)</div>
+    <div class="fg-list">
+      &bull; Convert PI &rarr; CI Draft<br>
+      &bull; Capture LC rules<br>
+      &bull; Link docs to trade/shipment<br>
+      &bull; Emit payment ready signal<br>
+      &bull; Reconcile payment to CI<br>
+      &bull; Map FIRC &amp; close EDPMS<br>
+      &bull; Auto-transition terminal states
+    </div>
+  </div>
+  <div>
+    <div class="fg-title" style="color:var(--red)">Validations (&#9670; Decision)</div>
+    <div class="fg-list">
+      &bull; <strong>V</strong> = Field validation (single doc)<br>
+      &bull; <strong>X</strong> = Cross-doc check (vs reference)<br>
+      &bull; <strong>T</strong> = Timeline/deadline check<br>
+      &bull; <strong style="color:var(--green)">PASS</strong> = proceed to next state<br>
+      &bull; <strong style="color:var(--red)">FAIL(400)</strong> = block + return errors<br>
+      &bull; <strong style="color:var(--yellow)">WARN(200)</strong> = proceed + warnings[]
+    </div>
+  </div>
+  <div>
+    <div class="fg-title" style="color:var(--yellow)">Fork-Join Parallelism</div>
+    <div class="fg-list">
+      &bull; <strong>Fork 1:</strong> PI &#x2016; PO (negotiation)<br>
+      &bull; <strong>Fork 2:</strong> PL &#x2016; SI (pre-shipment)<br>
+      &bull; <strong>Fork 3:</strong> BL &#x2016; COO &#x2016; EXD (shipment)<br>
+      &bull; Sequential: CI (from PI)<br>
+      &bull; Sequential: IMD (from BL+COO+CI)<br>
+      &bull; Sequential: PA &rarr; FIRC
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;margin-top:16px;font-size:9px;color:var(--text-muted);">
+  CBOS / PTWL &mdash; Trade Workflow DAG v3.0 &mdash; 12 Subflows &bull; 3 Fork-Joins &bull; 20+ Validation Decision Points &bull; 15 Cross-Document Checks
+</div>
+
+</div>
+</body>
+</html>

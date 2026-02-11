@@ -5,7 +5,7 @@ import com.cbosgroup.cbos.core.actors.Actor;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData.FlowStatus;
 import com.cbosgroup.cbos.core.flows.FlowMetadata;
-import com.cbosgroup.cbos.core.flows.FlowStateMetadata;
+import com.cbosgroup.cbos.core.flows.BaseFlowNode;
 import lombok.Data;
 
 import java.util.ArrayList;
@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.stream.Collectors;
 
 /**
@@ -24,6 +25,8 @@ import java.util.stream.Collectors;
 public class FlowInstance {
 
     protected String instanceId;
+    
+    protected String rootInstanceId;
 
     private FlowMetadata flowMeta;
 
@@ -33,6 +36,8 @@ public class FlowInstance {
     private FlowExecutionHistory history;
 
     private FlowExecutionStateData executionData;
+    
+    private ConcurrentLinkedDeque<FlowInstance> subflowStack;
 
     /**
      * Actors participating in this flow instance
@@ -41,6 +46,7 @@ public class FlowInstance {
 
     public FlowInstance(FlowMetadata flowMeta, Version version) {
         this.instanceId = UUID.randomUUID().toString();
+        this.rootInstanceId = this.instanceId;
         this.flowMeta = flowMeta;
         this.version = version;
         this.history = new FlowExecutionHistory();
@@ -54,7 +60,7 @@ public class FlowInstance {
      * Initialize and move to the start state
      */
     public void initialize() {
-        FlowStateMetadata startMeta = flowMeta.getStartState();
+        BaseFlowNode startMeta = flowMeta.getStartState();
         if (startMeta == null) {
             throw new IllegalStateException("Flow has no start state defined");
         }
@@ -69,7 +75,7 @@ public class FlowInstance {
      * Transition to the next state by ID
      */
     public void transitionTo(String nextStateId) {
-        FlowStateMetadata nextMeta = flowMeta.getState(nextStateId);
+        BaseFlowNode nextMeta = flowMeta.getState(nextStateId);
         if (nextMeta == null) {
             throw new IllegalStateException("Unknown state: " + nextStateId);
         }

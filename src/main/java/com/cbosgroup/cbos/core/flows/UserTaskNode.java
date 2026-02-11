@@ -21,7 +21,7 @@ import java.util.function.BiFunction;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class UserTaskState extends FlowStateMetadata {
+public class UserTaskNode extends BaseFlowNode {
 
     /**
      * List of expected input fields from user

@@ -8,7 +8,7 @@ import lombok.experimental.SuperBuilder;
  */
 @Data
 @SuperBuilder
-public class SubflowState extends FlowStateMetadata {
+public class SubflowNode extends BaseFlowNode {
 
 	/**
 	 * The id of the flow in FlowRepositiry

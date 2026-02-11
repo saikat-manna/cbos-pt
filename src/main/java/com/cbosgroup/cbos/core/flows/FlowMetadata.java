@@ -20,7 +20,7 @@ public class FlowMetadata {
     /**
      * All states in this flow, keyed by stateId
      */
-    private Map<String, FlowStateMetadata> states;
+    private Map<String, BaseFlowNode> states;
 
     /**
      * The ID of the starting state
@@ -30,14 +30,14 @@ public class FlowMetadata {
     /**
      * Get the start state metadata
      */
-    public FlowStateMetadata getStartState() {
+    public BaseFlowNode getStartState() {
         return states != null ? states.get(startStateId) : null;
     }
 
     /**
      * Get a state by its ID
      */
-    public FlowStateMetadata getState(String stateId) {
+    public BaseFlowNode getState(String stateId) {
         return states != null ? states.get(stateId) : null;
     }
 }
