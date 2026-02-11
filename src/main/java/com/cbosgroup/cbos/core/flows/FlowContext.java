@@ -10,4 +10,8 @@ public class FlowContext extends ConcurrentHashMap<String, String> {
 	@Getter
 	@Setter
 	private FlowResuptionInput input;
+
+	@Getter
+	@Setter
+	private ActorNotifier actorNotifier;
 }

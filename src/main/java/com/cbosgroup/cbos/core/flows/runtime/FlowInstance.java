@@ -2,6 +2,7 @@ package com.cbosgroup.cbos.core.flows.runtime;
 
 import com.cbosgroup.cbos.core.Version;
 import com.cbosgroup.cbos.core.actors.Actor;
+import com.cbosgroup.cbos.core.flows.FlowContext;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData;
 import com.cbosgroup.cbos.core.flows.FlowExecutionStateData.FlowStatus;
 import com.cbosgroup.cbos.core.flows.FlowMetadata;
@@ -150,6 +151,10 @@ public class FlowInstance {
                 .filter(a -> a.getRole() != null && eligibleRoles.contains(a.getRole()))
                 .collect(Collectors.toList());
     }
+
+	public FlowContext getFlowContext() {
+		return executionData.getContext();
+	}
 
 	public BaseFlowNodeInstance getCurrentState() {
 		return executionData.getCurrentState();
